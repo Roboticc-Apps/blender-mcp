@@ -1,16 +1,16 @@
 # OneController Integration Guide - Blender Context Broadcasting
 
-**For**: Claude Agent implementing Blender context feature
+**Purpose**: Implementation guide for Blender scene context feature in OneController
 **Date**: December 9, 2024
 **Repository**: D:\development\python\blender-mcp
 
 ---
 
-## Mission
+## Goal
 
 Implement real-time Blender scene context broadcasting in OneController, following the same pattern as Google Sheets and browser context integrations.
 
-**Read First**: `BLENDER_CONTEXT_RESEARCH.md` - Contains full technical research on what's possible and recommended approaches.
+**Background Research**: See `BLENDER_CONTEXT_RESEARCH.md` for full technical research on capabilities and approaches.
 
 ---
 
@@ -110,16 +110,16 @@ Browser Accessibility Tree → context_extraction.py → ai-context-container.js
 
 ---
 
-## Your Mission: Blender Context
+## Implementation Overview: Blender Context
 
-### Goal
+### Objective
 Implement the same pattern for Blender MCP:
 
 ```
 Blender Scene → blender-mcp (enhanced) → OneController Frontend → AI Context Display
 ```
 
-### What You Need to Build
+### What Needs to Be Built
 
 #### Phase 1: Enhance Blender MCP (blender-mcp repo)
 
@@ -462,59 +462,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
 ### Step 1: Enhance Blender MCP
 
-1. **Navigate to blender-mcp repo**:
-   ```bash
-   cd D:\development\python\blender-mcp
-   ```
+**Repository**: `D:\development\python\blender-mcp`
 
-2. **Edit `addon.py`**:
-   - Replace `get_scene_info()` method with enhanced version
-   - Add helper methods: `_get_all_objects()`, `_get_materials()`, `_get_cameras()`, `_get_lights()`
-   - Remove 10-object limit
-   - Add selection context (`bpy.context.selected_objects`, `bpy.context.active_object`)
+**Task 1.1**: Edit `addon.py` to enhance `get_scene_info()` method
+- Replace current limited implementation with comprehensive version
+- Add helper methods: `_get_all_objects()`, `_get_materials()`, `_get_cameras()`, `_get_lights()`
+- Remove 10-object limit
+- Add selection context (`bpy.context.selected_objects`, `bpy.context.active_object`)
 
-3. **Test in Blender**:
-   - Load addon in Blender
-   - Run `get_scene_info()` command
-   - Verify comprehensive data is returned
+**Task 1.2**: Test in Blender
+- Load addon in Blender
+- Run `get_scene_info()` command
+- Verify comprehensive data is returned
 
-4. **Commit changes**:
-   ```bash
-   git add addon.py
-   git commit -m "Enhance get_scene_info to return comprehensive scene context"
-   git push origin main
-   ```
+**Task 1.3**: Commit changes
+```bash
+cd D:\development\python\blender-mcp
+git add addon.py
+git commit -m "Enhance get_scene_info to return comprehensive scene context"
+git push origin main
+```
 
 ---
 
 ### Step 2: Add Frontend Integration
 
-1. **Navigate to one_controller repo**:
-   ```bash
-   cd D:\development\python\one_controller
-   ```
+**Repository**: `D:\development\python\one_controller`
 
-2. **Create Blender context provider**:
-   - File: `frontend/ai-context/context-providers/blender-context.js`
-   - Implement polling mechanism (every 3-5 seconds)
-   - Format data for display
+**Task 2.1**: Create Blender context provider
+- File: `frontend/ai-context/context-providers/blender-context.js`
+- Implement polling mechanism (every 3-5 seconds)
+- Format data for display
 
-3. **Update AI context container**:
-   - File: `frontend/ai-context/ai-context-container.js`
-   - Add Blender to context providers
-   - Implement `renderBlenderContext()` method
-   - Add auto-start when Blender MCP is running
+**Task 2.2**: Update AI context container
+- File: `frontend/ai-context/ai-context-container.js`
+- Add Blender to context providers
+- Implement `renderBlenderContext()` method
+- Add auto-start when Blender MCP is running
 
-4. **Add CSS styling**:
-   - File: `frontend/ai-context/ai-context.css` (if exists)
-   - Style `.blender-context` section to match existing contexts
+**Task 2.3**: Add CSS styling
+- File: `frontend/ai-context/ai-context.css` (if exists)
+- Style `.blender-context` section to match existing contexts
 
-5. **Test in OneController**:
-   - Start Blender MCP
-   - Open Blender with addon running
-   - Open OneController
-   - Verify context appears in AI Context panel
-   - Change scene in Blender → verify context updates
+**Task 2.4**: Test in OneController
+- Start Blender MCP
+- Open Blender with addon running
+- Open OneController
+- Verify context appears in AI Context panel
+- Change scene in Blender → verify context updates
 
 ---
 
@@ -567,13 +562,13 @@ bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update)
 
 ## File Locations Summary
 
-### Files You Will Edit (blender-mcp repo):
+### Files to Edit (blender-mcp repo):
 - ✏️ `D:\development\python\blender-mcp\addon.py` - Enhance `get_scene_info()`
 
-### Files You Will Create (one_controller repo):
+### Files to Create (one_controller repo):
 - ➕ `D:\development\python\one_controller\frontend\ai-context\context-providers\blender-context.js`
 
-### Files You Will Update (one_controller repo):
+### Files to Update (one_controller repo):
 - ✏️ `D:\development\python\one_controller\frontend\ai-context\ai-context-container.js` - Add Blender support
 - ✏️ `D:\development\python\one_controller\frontend\ai-context\ai-context.css` - Add styling (optional)
 
@@ -581,17 +576,17 @@ bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update)
 
 ## References
 
-- **Research Document**: `D:\development\python\blender-mcp\BLENDER_CONTEXT_RESEARCH.md` - Full technical details
+- **Research Document**: `BLENDER_CONTEXT_RESEARCH.md` in this repo - Full technical details
 - **Blender Python API**: https://docs.blender.org/api/current/
 - **MCP SDK**: Check `src/blender_mcp/server.py` for MCP implementation patterns
-- **Google Sheets Context**: `frontend/ai-context/context-providers/sheets-context.js` - Example to follow
-- **Browser Context**: `frontend/ai-context/context-providers/browser-context.js` - Example to follow
+- **Google Sheets Context**: `frontend/ai-context/context-providers/sheets-context.js` - Example reference
+- **Browser Context**: `frontend/ai-context/context-providers/browser-context.js` - Example reference
 
 ---
 
 ## Expected Results
 
-When complete, OneController should display Blender scene context like this:
+When complete, OneController will display Blender scene context like this:
 
 ```
 ╔═══════════════════════════════════════════════╗
@@ -609,16 +604,4 @@ When complete, OneController should display Blender scene context like this:
 ╚═══════════════════════════════════════════════╝
 ```
 
-This context updates every 3-5 seconds as the user works in Blender, providing the AI with current scene state for better voice command context awareness.
-
----
-
-## Questions?
-
-If you encounter issues:
-1. Check `BLENDER_CONTEXT_RESEARCH.md` for technical details
-2. Look at existing context providers in `frontend/ai-context/context-providers/`
-3. Test Blender addon changes in Blender first before integrating
-4. Start with polling - event-driven can come later
-
-**Good luck!** 🚀
+This context updates every 3-5 seconds as users work in Blender, providing AI with current scene state for better voice command context awareness.
