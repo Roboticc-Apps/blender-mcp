@@ -267,38 +267,115 @@ class BlenderMCPServer:
 
 
     def get_scene_info(self):
-        """Get information about the current Blender scene"""
+        """Get comprehensive information about the current Blender scene"""
         try:
             print("Getting scene info...")
-            # Simplify the scene info to reduce data size
+            scene = bpy.context.scene
+
             scene_info = {
-                "name": bpy.context.scene.name,
-                "object_count": len(bpy.context.scene.objects),
-                "objects": [],
-                "materials_count": len(bpy.data.materials),
+                "scene": {
+                    "name": scene.name,
+                    "frame_current": scene.frame_current,
+                    "frame_start": scene.frame_start,
+                    "frame_end": scene.frame_end,
+                    "render_engine": scene.render.engine,
+                    "active_camera": scene.camera.name if scene.camera else None,
+                    "mode": bpy.context.mode
+                },
+                "selection": {
+                    "active_object": bpy.context.active_object.name if bpy.context.active_object else None,
+                    "selected_objects": [obj.name for obj in bpy.context.selected_objects],
+                    "total_selected": len(bpy.context.selected_objects)
+                },
+                "objects": self._get_all_objects(),
+                "materials": self._get_materials(),
+                "world": self._get_world_settings(),
+                "collections": self._get_collections()
             }
 
-            # Collect minimal object information (limit to first 10 objects)
-            for i, obj in enumerate(bpy.context.scene.objects):
-                if i >= 10:  # Reduced from 20 to 10
-                    break
-
-                obj_info = {
-                    "name": obj.name,
-                    "type": obj.type,
-                    # Only include basic location data
-                    "location": [round(float(obj.location.x), 2),
-                                round(float(obj.location.y), 2),
-                                round(float(obj.location.z), 2)],
-                }
-                scene_info["objects"].append(obj_info)
-
-            print(f"Scene info collected: {len(scene_info['objects'])} objects")
+            print(f"Scene info collected: {len(scene_info['objects'])} objects, {len(scene_info['materials'])} materials")
             return scene_info
         except Exception as e:
             print(f"Error in get_scene_info: {str(e)}")
             traceback.print_exc()
             return {"error": str(e)}
+
+    def _get_all_objects(self):
+        """Get comprehensive object data (removes 10-object limit)"""
+        objects = []
+        for obj in bpy.context.scene.objects:
+            obj_data = {
+                "name": obj.name,
+                "type": obj.type,
+                "location": [round(float(obj.location.x), 2),
+                           round(float(obj.location.y), 2),
+                           round(float(obj.location.z), 2)],
+                "rotation": [round(float(obj.rotation_euler.x), 2),
+                           round(float(obj.rotation_euler.y), 2),
+                           round(float(obj.rotation_euler.z), 2)],
+                "scale": [round(float(obj.scale.x), 2),
+                        round(float(obj.scale.y), 2),
+                        round(float(obj.scale.z), 2)],
+                "visible": not obj.hide_get(),
+                "modifiers": [mod.name for mod in obj.modifiers],
+                "materials": [slot.material.name for slot in obj.material_slots if slot.material],
+                "parent": obj.parent.name if obj.parent else None,
+                "children": [child.name for child in obj.children]
+            }
+
+            # Type-specific data
+            if obj.type == 'MESH':
+                obj_data["vertex_count"] = len(obj.data.vertices)
+                obj_data["face_count"] = len(obj.data.polygons)
+            elif obj.type == 'CAMERA':
+                obj_data["lens"] = round(float(obj.data.lens), 2)
+                obj_data["sensor_width"] = round(float(obj.data.sensor_width), 2)
+            elif obj.type == 'LIGHT':
+                obj_data["light_type"] = obj.data.type
+                obj_data["energy"] = round(float(obj.data.energy), 2)
+                obj_data["color"] = [round(float(obj.data.color[0]), 2),
+                                   round(float(obj.data.color[1]), 2),
+                                   round(float(obj.data.color[2]), 2)]
+
+            objects.append(obj_data)
+
+        return objects
+
+    def _get_materials(self):
+        """Get all materials in scene"""
+        materials = []
+        for mat in bpy.data.materials:
+            materials.append({
+                "name": mat.name,
+                "use_nodes": mat.use_nodes,
+                "base_color": [round(float(mat.diffuse_color[0]), 2),
+                             round(float(mat.diffuse_color[1]), 2),
+                             round(float(mat.diffuse_color[2]), 2),
+                             round(float(mat.diffuse_color[3]), 2)] if mat.diffuse_color else None
+            })
+        return materials
+
+    def _get_world_settings(self):
+        """Get world/environment settings"""
+        world = bpy.context.scene.world
+        if not world:
+            return None
+
+        return {
+            "name": world.name,
+            "use_nodes": world.use_nodes
+        }
+
+    def _get_collections(self):
+        """Get all collections in scene"""
+        collections = []
+        for col in bpy.data.collections:
+            collections.append({
+                "name": col.name,
+                "object_count": len(col.objects),
+                "visible": not col.hide_viewport
+            })
+        return collections
 
     @staticmethod
     def _get_aabb(obj):
@@ -431,7 +508,8 @@ class BlenderMCPServer:
             captured_output = capture_buffer.getvalue()
             return {"executed": True, "result": captured_output}
         except Exception as e:
-            raise Exception(f"Code execution error: {str(e)}")
+            # Return error instead of raising - allows error to be sent back to client
+            return {"executed": False, "error": f"Code execution error: {str(e)}"}
 
 
 

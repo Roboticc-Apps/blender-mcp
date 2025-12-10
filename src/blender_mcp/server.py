@@ -140,12 +140,10 @@ class BlenderConnection:
             
             response = json.loads(response_data.decode('utf-8'))
             logger.info(f"Response parsed, status: {response.get('status', 'unknown')}")
-            
-            if response.get("status") == "error":
-                logger.error(f"Blender error: {response.get('message')}")
-                raise Exception(response.get("message", "Unknown error from Blender"))
-            
-            return response.get("result", {})
+
+            # Return the full response (including errors) without raising
+            # Let the calling tool handle error formatting
+            return response
         except socket.timeout:
             logger.error("Socket timeout while waiting for response from Blender")
             # Don't try to reconnect here - let the get_blender_connection handle reconnection
@@ -257,9 +255,16 @@ def get_scene_info(ctx: Context) -> str:
     """Get detailed information about the current Blender scene"""
     try:
         blender = get_blender_connection()
-        result = blender.send_command("get_scene_info")
+        response = blender.send_command("get_scene_info")
 
-        # Just return the JSON representation of what Blender sent us
+        # Check for errors
+        if response.get("status") == "error":
+            error_msg = response.get("message", "Unknown error")
+            logger.error(f"Blender error: {error_msg}")
+            return f"Error getting scene info: {error_msg}"
+
+        # Return the result
+        result = response.get("result", {})
         return json.dumps(result, indent=2)
     except Exception as e:
         logger.error(f"Error getting scene info from Blender: {str(e)}")
@@ -340,7 +345,16 @@ def execute_blender_code(ctx: Context, code: str) -> str:
     try:
         # Get the global connection
         blender = get_blender_connection()
-        result = blender.send_command("execute_code", {"code": code})
+        response = blender.send_command("execute_code", {"code": code})
+
+        # Check if Blender returned an error
+        if response.get("status") == "error":
+            error_msg = response.get("message", "Unknown error from Blender")
+            logger.error(f"Blender code execution error: {error_msg}")
+            return f"Error executing code: {error_msg}"
+
+        # Success - return result
+        result = response.get("result", {})
         return f"Code executed successfully: {result.get('result', '')}"
     except Exception as e:
         logger.error(f"Error executing code: {str(e)}")
