@@ -1,20 +1,146 @@
 # MCP Build and Upload Guide for OneController
 
-**Date**: 2025-12-04
+**Date**: 2025-12-22 (Updated)
 **Purpose**: Document the complete process for building, packaging, and deploying MCPs to OneController marketplace
+
+> **IMPORTANT PROJECT PATHS**:
+> - **Windows MCP**: `D:\development\python\windows-mcp` (SEPARATE repo)
+> - **OneController**: `D:\development\python\one_controller`
+> - **Upload Script**: `D:\development\python\one_controller\scripts\upload-to-bunnycdn.js`
 
 ---
 
 ## Table of Contents
 
-1. [Architecture Overview](#architecture-overview)
-2. [Database Schema](#database-schema)
-3. [MCP Package Structure](#mcp-package-structure)
-4. [Build Process](#build-process)
-5. [Upload to Bunny CDN](#upload-to-bunny-cdn)
-6. [Database Registration](#database-registration)
-7. [Playwright MCP Implementation](#playwright-mcp-implementation)
-8. [Testing](#testing)
+1. [Deployment Checklist](#deployment-checklist) ⚠️ **READ FIRST**
+2. [Architecture Overview](#architecture-overview)
+3. [Database Schema](#database-schema)
+4. [MCP Package Structure](#mcp-package-structure)
+5. [Build Process](#build-process)
+6. [Upload to Bunny CDN](#upload-to-bunny-cdn)
+7. [Database Registration](#database-registration)
+8. [Playwright MCP Implementation](#playwright-mcp-implementation)
+9. [Testing](#testing)
+
+---
+
+## Deployment Checklist
+
+> ⚠️ **MANDATORY**: Complete this checklist for EVERY MCP build and deployment. Check database first - some items may already be done.
+
+### Pre-Deployment Verification
+
+```
+□ Read and understand this guide before starting
+□ Verify you're using the correct Supabase project ID: icajylcaekqydjsbyssp
+□ ⚠️ BUMP VERSION NUMBER in manifest.json BEFORE building
+  - NEVER reuse the same version number
+  - Use semantic versioning: major.minor.patch (e.g., 1.0.5 → 1.0.6)
+  - Check current version: query mcp_servers table first
+```
+
+### Build Phase
+
+```
+□ Version number in manifest.json is NEW (higher than database)
+□ Executable builds successfully without errors
+□ Run test to verify executable works (test_core_tools.py or similar)
+□ ZIP package created in dist/ folder
+□ SHA-256 checksum generated and saved to .sha256 file
+□ Note the exact file size in bytes FROM THE BUILT FILE (not from memory)
+```
+
+### Upload Phase (Bunny CDN)
+
+```
+□ Upload to correct directory structure:
+  /mcps/{category}/{mcp-slug}/{mcp-slug}-v{version}-{platform}.zip
+
+  Examples:
+  - /mcps/productivity/oc-sheet-mcp/oc-sheet-mcp-v1.0.5-win32.zip
+  - /mcps/browser/playwright-mcp/playwright-mcp-v2025.12.04-win32.zip
+  - /mcps/windows/windows-mcp/windows-mcp-v0.5.35-win32.zip
+
+□ Verify upload successful (HTTP 201 response)
+□ Test CDN URL is accessible: https://onecontroller.b-cdn.net/mcps/...
+□ ⚠️ GET ACTUAL FILE SIZE FROM CDN (use curl -I to check Content-Length header)
+  - Command: curl -sI "https://onecontroller.b-cdn.net/mcps/..." | grep Content-Length
+  - Use THIS value for size_bytes in database, NOT the local file size
+```
+
+### Database Updates (Supabase)
+
+**Use Supabase MCP with project ID: `icajylcaekqydjsbyssp`**
+
+#### 1. mcp_servers Table
+```
+□ Check if MCP entry exists (query by slug)
+□ If new: INSERT complete record
+□ If updating: UPDATE with new version, checksum, size_bytes, cdn_url
+□ Verify manifest JSONB includes "platforms" field (CRITICAL for marketplace visibility)
+□ Verify checksum matches the .sha256 file exactly
+□ Verify size_bytes matches actual file size
+□ Verify cdn_url points to correct Bunny CDN path
+```
+
+#### 2. unified_commands Table
+```
+□ Query existing commands for this MCP
+□ Add any NEW tools as unified_commands
+□ Verify all tools from manifest.json have corresponding commands
+□ Verify command_triggers are set for voice activation
+□ Verify mcp_server_id references correct UUID from mcp_servers
+□ Verify is_enabled = true for all commands
+```
+
+#### 3. app_prompts Table
+```
+□ Query existing prompt for this MCP (by app_identifier)
+□ If new: INSERT comprehensive app_prompt with:
+  - All available tools and their parameters
+  - Common voice command mappings
+  - Best practices for AI agent
+□ If updating: UPDATE prompt_text with any new tools/features
+□ Verify is_active = true
+```
+
+### Post-Deployment Verification
+
+```
+□ Query mcp_servers to confirm all fields are correct
+□ Query unified_commands to confirm command count matches tool count
+□ Query app_prompts to confirm prompt exists and is active
+□ Verify MCP appears in marketplace (may need to check platform filter)
+```
+
+### Quick Verification Queries
+
+```sql
+-- Check mcp_servers entry
+SELECT slug, latest_version, checksum, size_bytes,
+       manifest->'platforms' as platforms,
+       cdn_url
+FROM mcp_servers WHERE slug = 'your-mcp-slug';
+
+-- Count unified_commands
+SELECT COUNT(*) FROM unified_commands WHERE app_identifier = 'your-mcp-slug';
+
+-- Check app_prompts
+SELECT app_identifier, is_active, LENGTH(prompt_text) as prompt_length
+FROM app_prompts WHERE app_identifier = 'your-mcp-slug';
+```
+
+### Common Issues Checklist
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| MCP not in marketplace | `manifest.platforms` missing | Add platforms to manifest JSONB |
+| Wrong checksum | Rebuilt after upload | Re-upload and update DB |
+| **Installation fails** | **size_bytes mismatch** | **curl -I CDN URL to get actual Content-Length, update DB** |
+| **Same version conflict** | **Didn't bump version** | **ALWAYS bump version in manifest.json before building** |
+| Tools not working | Missing unified_commands | Add commands for each tool |
+| AI doesn't know how to use MCP | Missing app_prompt | Create app_prompt with instructions |
+| File download fails | Wrong CDN path | Verify directory structure |
 
 ---
 
@@ -246,6 +372,58 @@ playwright-mcp/
   ]
 }
 ```
+
+### ⚠️ CRITICAL: manifest.platforms Field Requirement
+
+**THE MCP WILL NOT APPEAR IN THE MARKETPLACE IF THIS IS MISSING!**
+
+The `platforms` field in `manifest.json` is **MANDATORY** and must be included in **BOTH**:
+1. The `manifest.json` file in your ZIP package
+2. The `manifest` JSONB column in the database
+
+**Why This Matters:**
+- The marketplace edge function filters MCPs by platform using `manifest.platforms`
+- If this field is missing or empty, the MCP **will not show up** for any platform
+- The ON CONFLICT clause must update the `manifest` field to ensure platforms are synced
+
+**Common Mistake:**
+```sql
+-- ❌ WRONG - ON CONFLICT doesn't update manifest field
+ON CONFLICT (slug) DO UPDATE SET
+    latest_version = EXCLUDED.latest_version,
+    cdn_url = EXCLUDED.cdn_url;
+    -- Missing: manifest = EXCLUDED.manifest !!!
+
+-- ✅ CORRECT - Always update manifest field
+ON CONFLICT (slug) DO UPDATE SET
+    latest_version = EXCLUDED.latest_version,
+    cdn_url = EXCLUDED.cdn_url,
+    manifest = EXCLUDED.manifest,  -- CRITICAL!
+    updated_at = NOW();
+```
+
+**Valid Platform Values:**
+- `"win32"` - Windows
+- `"darwin"` - macOS
+- `"linux"` - Linux
+
+**Example:**
+```json
+{
+  "id": "my-mcp",
+  "name": "My MCP",
+  "platforms": ["win32"],  // REQUIRED - Even if only one platform!
+  "tools": [...]
+}
+```
+
+**Troubleshooting:**
+If your MCP doesn't appear in the marketplace:
+1. Check the database: `SELECT slug, manifest->'platforms' FROM mcp_servers WHERE slug = 'your-mcp';`
+2. Verify the platforms field exists and has values: `["win32"]`
+3. If missing, update: `UPDATE mcp_servers SET manifest = jsonb_set(manifest, '{platforms}', '["win32"]') WHERE slug = 'your-mcp';`
+
+---
 
 ### index.js Wrapper
 
@@ -481,22 +659,30 @@ powershell (Get-FileHash playwright-mcp-v2025.12.04-win32.zip -Algorithm SHA256)
 
 **Example**: Windows MCP
 
-#### Step 1: Create MCP Directory Structure
+#### Step 1: MCP Directory Structure
+
+**Windows MCP Location**: `D:\development\python\windows-mcp`
+
+> **IMPORTANT**: The windows-mcp project lives in a SEPARATE directory from one_controller.
+> Do NOT confuse with the old path `mcp-packages/windows-base/windows-mcp` which is deprecated.
 
 ```bash
-cd mcp-packages/windows-base/windows-mcp
+cd D:\development\python\windows-mcp
 ```
 
 Structure:
 ```
-windows-mcp/
-├── main.py          # Entry point
-├── src/             # Source modules
-├── manifest.json    # MCP metadata
-├── pyproject.toml   # Python dependencies
-├── windows-mcp.spec # PyInstaller spec file
-├── build.ps1        # Build script
-└── .venv/           # Virtual environment
+D:\development\python\windows-mcp\
+├── main.py              # Entry point
+├── src/                 # Source modules
+│   ├── desktop/         # Desktop automation (service.py, views.py, config.py)
+│   └── tree/            # UI tree scanning
+├── manifest.json        # MCP metadata
+├── pyproject.toml       # Python dependencies
+├── windows-mcp.spec     # PyInstaller spec file
+├── build.ps1            # Build script
+├── test_state_tool.py   # Test script for State-Tool
+└── .venv/               # Virtual environment
 ```
 
 #### Step 2: Create manifest.json
@@ -523,20 +709,69 @@ windows-mcp/
 
 #### Step 3: Create PyInstaller Spec File
 
+**⚠️ CRITICAL: FastMCP 2.14.1+ Requirement**
+
+If your MCP uses FastMCP 2.14.1 or later, you MUST properly bundle the lupa library (Python-Lua bindings) and fakeredis. FastMCP uses pydocket for background tasks, which depends on fakeredis[lua], which requires lupa's compiled C extensions (.pyd files on Windows).
+
+**Without proper bundling, you'll get:**
+- `ModuleNotFoundError: No module named 'lupa.lua51'`
+- `ModuleNotFoundError: No module named 'DLFCN'`
+- `unknown command 'evalsha'` (if lupa partially loads but binaries are missing)
+
+**The Solution:**
+
+Use `collect_all()` to bundle **BOTH** data files AND binary files (.pyd/.so) for lupa and fakeredis:
+
 ```python
 # windows-mcp.spec
+from PyInstaller.utils.hooks import copy_metadata, collect_data_files, collect_all
+
+datas = []
+binaries = []
+
+# Collect metadata for FastMCP and MCP
+datas += copy_metadata('fastmcp')
+datas += copy_metadata('mcp')
+
+# CRITICAL: Collect all fakeredis files including commands.json
+# fakeredis needs its data files for Lua command definitions
+fakeredis_data = collect_all('fakeredis')
+if fakeredis_data[0]:
+    datas += fakeredis_data[0]  # datas
+if fakeredis_data[1]:
+    binaries += fakeredis_data[1]  # binaries
+hiddenimports_fakeredis = fakeredis_data[2] if fakeredis_data[2] else []
+
+# CRITICAL: Collect lupa files (both data and binaries)
+# lupa contains compiled .pyd/.so files that MUST be included
+# Without these, you'll get "ModuleNotFoundError: No module named 'lupa.lua51'" errors
+lupa_all = collect_all('lupa')
+if lupa_all[0]:
+    datas += lupa_all[0]  # data files
+if lupa_all[1]:
+    binaries += lupa_all[1]  # binary files (.pyd/.so) - CRITICAL!
+hiddenimports_lupa = lupa_all[2] if lupa_all[2] else []
+
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=['live_inspect', 'fastmcp', 'humancursor', 'uiautomation'],
+    binaries=binaries,  # CRITICAL: Must include collected binaries
+    datas=datas,  # CRITICAL: Must include collected data files
+    hiddenimports=[
+        'fastmcp',
+        'mcp',
+        'lupa',
+        'humancursor',
+        'uiautomation',
+    ] + hiddenimports_fakeredis + hiddenimports_lupa,  # Add collected hidden imports
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
     optimize=0,
 )
+
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
@@ -548,9 +783,26 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=True,
-    console=True,
+    console=True,  # MUST be True for stdio communication (JSON-RPC)
 )
 ```
+
+**Why This Is Critical:**
+
+1. **collect_all() Returns 3 Things:**
+   - `[0]` = Data files (JSON, text, etc.)
+   - `[1]` = Binary files (.pyd, .so, .dll) - **MUST include for lupa!**
+   - `[2]` = Hidden imports (Python modules)
+
+2. **lupa Binary Extensions:**
+   - lupa ships with compiled Lua bindings: lua51, lua52, lua53, lua54, luajit20, luajit21
+   - These are .pyd files on Windows that must be bundled
+   - Without them, Python can't load the Lua runtime
+
+3. **Common Mistake:**
+   - Using `collect_data_files('lupa')` only gets data files, not binaries
+   - Using `hiddenimports=['lupa']` only tells PyInstaller to look for lupa, but doesn't bundle the .pyd files
+   - You MUST use `collect_all()` and add both `datas` and `binaries`
 
 #### Step 4: Create Build Script
 
@@ -597,18 +849,93 @@ Write-Host "SHA-256: $hash"
 #### Step 5: Run Build
 
 ```bash
-powershell -ExecutionPolicy Bypass -File build.ps1
+# From the windows-mcp directory
+cd D:\development\python\windows-mcp
+
+# Run with version parameter
+powershell -ExecutionPolicy Bypass -Command ".\build.ps1 -Version '0.5.25'"
 ```
 
 **Output**:
 ```
-dist/
-├── windows-mcp.exe                      # ~59 MB bundled executable
+D:\development\python\windows-mcp\dist\
+├── windows-mcp.exe                      # ~70 MB bundled executable
 ├── manifest.json
 ├── README.md
 ├── LICENSE.md
-├── windows-mcp-v0.5.1-win32.zip         # ~58 MB
-└── windows-mcp-v0.5.1-win32.zip.sha256
+├── windows-mcp-v0.5.25-win32.zip        # ~70 MB
+└── windows-mcp-v0.5.25-win32.zip.sha256
+```
+
+#### Step 6: Upload to BunnyCDN
+
+```bash
+# From one_controller directory
+cd D:\development\python\one_controller
+node scripts/upload-to-bunnycdn.js
+```
+
+> **Note**: Update the upload script paths in `scripts/upload-to-bunnycdn.js` before uploading.
+> The script should point to `D:\development\python\windows-mcp\dist\windows-mcp-vX.X.X-win32.zip`
+
+---
+
+### ⚠️ CRITICAL: Virtual Environment Build Requirement for Python MCPs
+
+**YOU MUST USE VENV PYTHON TO RUN PYINSTALLER OR YOU'LL WASTE HOURS DEBUGGING!**
+
+**Common Mistake That Causes Hours of Debugging:**
+```bash
+# ❌ WRONG - Uses system Python, bundles wrong packages
+pyinstaller --clean your-app.spec
+
+# ❌ WRONG - Even activating venv first doesn't guarantee correct Python
+.venv\Scripts\activate
+pyinstaller --clean your-app.spec
+```
+
+**What Happens When You Do This Wrong:**
+1. ✅ Build succeeds with no errors
+2. ❌ Executable crashes: `ModuleNotFoundError: No module named 'redis'`
+3. 😰 You add `collect_all('redis')` to spec → Still fails with `ModuleNotFoundError: No module named 'opentelemetry'`
+4. 😰 You add opentelemetry → Fails with wrapt error
+5. 😰 You add wrapt → Fails with cloudpickle error
+6. 😱 **HOURS LATER** you're still adding packages one by one...
+
+**Why This Happens:**
+- PyInstaller bundles packages from the Python installation it's run with
+- System `pyinstaller` uses system Python (which doesn't have your venv packages)
+- Adding packages to `hiddenimports` doesn't help if PyInstaller can't find them
+- Error messages DON'T tell you the real problem!
+
+**The Correct Way (Use Venv Python Explicitly):**
+```bash
+# ✅ CORRECT - Explicitly use venv Python
+.venv\Scripts\python -m PyInstaller --clean your-app.spec
+
+# ✅ ALSO CORRECT - Use venv's pyinstaller directly
+.venv\Scripts\pyinstaller.exe --clean your-app.spec
+
+# Verify you're using the right Python:
+where python  # Should show .venv\Scripts\python.exe, NOT C:\Python\...
+```
+
+**How to Know You Made This Mistake:**
+- Cascading `ModuleNotFoundError` (redis → opentelemetry → wrapt → cloudpickle → ...)
+- Each package you add reveals another missing package
+- Packages ARE installed in venv (you can import them in Python)
+- But PyInstaller can't find them
+
+**The Fix Takes 30 Seconds:**
+```bash
+# Delete bad build
+rm -rf build/ dist/
+
+# Rebuild with venv Python
+.venv\Scripts\python -m PyInstaller --clean your-app.spec
+
+# Test - should work immediately!
+./dist/your-app.exe
 ```
 
 ---
@@ -620,7 +947,7 @@ dist/
 | **Bundler** | pkg (standalone exe) | PyInstaller |
 | **Entry Point** | index.js | main.py |
 | **Spec File** | package.json | windows-mcp.spec |
-| **Build Command** | `pkg index.js` | `pyinstaller --clean windows-mcp.spec` |
+| **Build Command** | `pkg index.js` | `.venv\Scripts\python -m PyInstaller --clean windows-mcp.spec` |
 | **Output** | Single .exe (~30-50 MB) | Single .exe (~50-100 MB) |
 | **Dependencies** | Bundled in exe | Bundled in exe |
 | **Executable Size** | 30-50 MB | 50-100 MB |
@@ -645,6 +972,66 @@ dist/
 - **Example MCPs**: windows-mcp
 
 ---
+
+### 🎨 MCP-UI Build Process (MCPs with UI folder)
+
+**Example**: OC-Sheet-MCP
+
+Some MCPs have a UI component (HTML/CSS/JS) that provides a visual interface. These are identified by `"type": "mcp-ui"` and `"ui_enabled": true` in manifest.json.
+
+#### Directory Structure for MCP-UI
+
+```
+D:\development\python\oc-sheet-mcp\
+├── server.py            # MCP server entry point
+├── manifest.json        # Must have "type": "mcp-ui", "ui_enabled": true
+├── ui/                  # UI folder - CRITICAL for MCP-UI!
+│   ├── index.html       # Main UI file
+│   ├── styles.css       # Styles
+│   └── script.js        # UI logic
+├── oc-sheet-mcp.spec    # PyInstaller spec file
+├── build/               # PyInstaller build artifacts
+├── dist/                # Final output
+└── .venv/               # Virtual environment
+```
+
+#### PyInstaller Spec File for MCP-UI
+
+**CRITICAL**: The UI folder must be included in the PyInstaller `datas` list:
+
+```python
+# In your .spec file
+datas = []
+
+# Add UI files and manifest - REQUIRED for MCP-UI!
+datas += [('ui', 'ui'), ('manifest.json', '.')]
+
+a = Analysis(
+    ['server.py'],
+    datas=datas,  # UI folder will be bundled inside exe
+    # ... rest of config
+)
+```
+
+#### ZIP Package Contents for MCP-UI
+
+The ZIP must contain:
+1. **Executable** (e.g., `oc-sheet-mcp.exe`) - has UI bundled inside
+2. **manifest.json** - with `"type": "mcp-ui"`
+
+**IMPORTANT**: The UI folder is ONLY bundled inside the executable, NOT separately in the ZIP. PyInstaller extracts it at runtime.
+
+```powershell
+# Create ZIP with exe and manifest only (UI is inside exe)
+Compress-Archive -Path 'dist\oc-sheet-mcp.exe', 'manifest.json' -DestinationPath 'dist\oc-sheet-mcp-v1.0.8-win32.zip' -Force
+```
+
+#### Common MCP-UI Mistakes
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Runtime error accessing UI | UI not in spec datas | Add `datas += [('ui', 'ui')]` to spec file |
+| manifest.json not found | Not bundled in exe | Add `('manifest.json', '.')` to spec datas |
 
 ---
 
@@ -691,6 +1078,38 @@ const { data, error } = await supabase.functions.invoke('bunny-storage', {
 ---
 
 ## Database Registration
+
+### ⚠️ CRITICAL Pre-Registration Checklist
+
+**BEFORE registering your MCP in the database, verify:**
+
+1. ✅ **manifest.json includes `platforms` array**
+   ```json
+   {
+     "platforms": ["win32"]  // REQUIRED!
+   }
+   ```
+
+2. ✅ **manifest JSONB in SQL includes `platforms`**
+   ```sql
+   manifest = '{
+     "platforms": ["win32"],  -- MUST be present!
+     "tools": [...]
+   }'::jsonb
+   ```
+
+3. ✅ **ON CONFLICT clause updates `manifest` field**
+   ```sql
+   ON CONFLICT (slug) DO UPDATE SET
+       manifest = EXCLUDED.manifest,  -- CRITICAL!
+       updated_at = NOW();
+   ```
+
+**If any of these are missing, your MCP WILL NOT appear in the marketplace!**
+
+See the "manifest.platforms Field Requirement" section above for detailed troubleshooting.
+
+---
 
 ### Insert into mcp_servers Table
 
@@ -768,10 +1187,12 @@ INSERT INTO public.mcp_servers (
 ON CONFLICT (slug) DO UPDATE SET
     latest_version = EXCLUDED.latest_version,
     description = EXCLUDED.description,
+    long_description = EXCLUDED.long_description,
     cdn_url = EXCLUDED.cdn_url,
     checksum = EXCLUDED.checksum,
     size_bytes = EXCLUDED.size_bytes,
-    manifest = EXCLUDED.manifest,
+    manifest = EXCLUDED.manifest,  -- CRITICAL: Must update to sync platforms field!
+    tags = EXCLUDED.tags,
     updated_at = NOW();
 ```
 
@@ -843,6 +1264,131 @@ MCPs log to:
 
 ---
 
+## Troubleshooting
+
+### MCP Not Appearing in Marketplace
+
+**Symptom**: Your MCP is registered in the database but doesn't show up in the OneController marketplace.
+
+**Root Cause**: 99% of the time, this is because the `manifest.platforms` field is missing or empty.
+
+**How the Marketplace Works:**
+1. Frontend calls `mcp-get-marketplace` IPC with platform (e.g., "win32")
+2. Backend calls Supabase edge function `mcp-marketplace`
+3. Edge function queries `mcp_servers` table
+4. **CRITICAL**: Edge function filters results by `manifest.platforms` array:
+   ```typescript
+   if (platform) {
+     filteredMCPs = filteredMCPs.filter(mcp => {
+       const platforms = mcp.manifest?.platforms || [];
+       return platforms.some(p => normalizePlatform(p) === normalizedPlatform);
+     });
+   }
+   ```
+5. If `manifest.platforms` is missing/empty, the MCP is filtered out!
+
+**Step-by-Step Debugging:**
+
+1. **Check Database Entry**
+   ```sql
+   SELECT slug, name, category, is_base_package, is_active, is_verified,
+          manifest->'platforms' as platforms
+   FROM public.mcp_servers
+   WHERE slug = 'your-mcp-slug';
+   ```
+
+   **Expected Result:**
+   ```
+   slug: "file-browser"
+   platforms: ["win32"]  ← MUST have values!
+   is_active: true
+   is_verified: true
+   ```
+
+2. **Verify Platforms Field**
+   ```sql
+   -- Check if platforms exists and has values
+   SELECT
+       slug,
+       manifest->'platforms' as platforms,
+       jsonb_array_length(manifest->'platforms') as platform_count
+   FROM public.mcp_servers
+   WHERE slug = 'your-mcp-slug';
+   ```
+
+   If `platforms` is `null` or `platform_count` is `0`, that's your problem!
+
+3. **Fix Missing Platforms**
+   ```sql
+   -- Add platforms field to manifest
+   UPDATE public.mcp_servers
+   SET manifest = jsonb_set(
+       manifest,
+       '{platforms}',
+       '["win32"]'::jsonb
+   )
+   WHERE slug = 'your-mcp-slug';
+   ```
+
+4. **Verify Other Required Fields**
+   ```sql
+   SELECT slug, is_active, is_verified, category, is_base_package
+   FROM public.mcp_servers
+   WHERE slug = 'your-mcp-slug';
+   ```
+
+   Ensure:
+   - `is_active = true`
+   - `is_verified = true`
+   - `category` matches expected value ("base", "productivity", etc.)
+
+5. **Refresh Marketplace**
+   - Close and reopen OneController Settings
+   - Navigate to MCPs > Marketplace tab
+   - MCP should now appear in the correct category
+
+**Common Mistakes:**
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| MCP missing from marketplace | `manifest.platforms` is null/empty | Add platforms to manifest JSONB |
+| MCP in wrong category | `category` field incorrect OR `is_base_package` wrong | Update category/is_base_package |
+| ON CONFLICT doesn't update platforms | ON CONFLICT clause missing `manifest = EXCLUDED.manifest` | Update SQL to include manifest field |
+| manifest.json has platforms but DB doesn't | ON CONFLICT didn't update manifest | Always include `manifest = EXCLUDED.manifest` in ON CONFLICT |
+
+**Real-World Example (December 2025):**
+
+**Problem**: file-browser v1.13.1 uploaded successfully, database entry created, but MCP didn't show in marketplace.
+
+**Debugging Steps:**
+1. Checked installed MCPs - file-browser was there but not in marketplace list
+2. Verified database - is_active=true, is_verified=true, category correct
+3. Compared with working MCPs (web-fetch-mcp) - found platforms field difference
+4. Checked edge function code - discovered platform filtering by `manifest.platforms`
+5. Verified file-browser manifest - platforms field was MISSING!
+
+**Root Cause**: ON CONFLICT clause didn't include `manifest = EXCLUDED.manifest`, so old manifest (without platforms) persisted.
+
+**Fix**:
+```sql
+UPDATE public.mcp_servers
+SET manifest = jsonb_set(manifest, '{platforms}', '["win32"]')
+WHERE slug = 'file-browser';
+```
+
+**Prevention**: Always include in ON CONFLICT:
+```sql
+ON CONFLICT (slug) DO UPDATE SET
+    manifest = EXCLUDED.manifest,  -- CRITICAL!
+    -- ... other fields
+    updated_at = NOW();
+```
+
+**Time Lost**: 2+ hours of debugging
+**Lesson**: Check `manifest.platforms` FIRST when MCP doesn't appear in marketplace!
+
+---
+
 ## Appendix
 
 ### MCP Manager Code Flow
@@ -871,12 +1417,14 @@ Record in user_mcp_installations table
 ### File Locations
 
 - **MCPs installed to**: `%APPDATA%\OneController\mcps\{mcp_id}\`
-- **MCP source (dev)**: `D:\development\python\one_controller\mcp-packages\`
+- **Windows MCP source**: `D:\development\python\windows-mcp\` (SEPARATE from one_controller)
+- **OneController project**: `D:\development\python\one_controller\`
 - **Frontend handlers**: `frontend/mcp-*.js`
 - **Settings UI**: `frontend/settings/scripts/mcp-handler.js`
+- **Upload script**: `D:\development\python\one_controller\scripts\upload-to-bunnycdn.js`
 
 ---
 
 **End of Guide**
 
-For questions or issues, refer to existing MCPs in `mcp-packages/windows-base/` for examples.
+For Windows MCP development, refer to `D:\development\python\windows-mcp\` for the source code.
