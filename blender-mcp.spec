@@ -2,9 +2,13 @@
 # PyInstaller spec file for Blender MCP
 # Bundles the MCP server as a standalone executable for OneController
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+import os
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all
 
 block_cipher = None
+
+# Get project root
+project_root = os.path.dirname(os.path.abspath(SPEC))
 
 # Collect all MCP and related package data
 datas = []
@@ -13,11 +17,17 @@ datas += collect_data_files('mcp')
 # Include addon.py in the distribution
 datas += [('addon.py', '.')]
 
+# Include the blender_mcp package from src
+datas += [(os.path.join(project_root, 'src', 'blender_mcp'), 'blender_mcp')]
+
 # Collect all hidden imports for MCP and dependencies
 hiddenimports = []
 hiddenimports += collect_submodules('mcp')
-hiddenimports += collect_submodules('blender_mcp')
 hiddenimports += [
+    'blender_mcp',
+    'blender_mcp.server',
+    'blender_mcp.telemetry',
+    'blender_mcp.telemetry_decorator',
     'asyncio',
     'socket',
     'json',
@@ -34,7 +44,7 @@ hiddenimports += [
 
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    pathex=[os.path.join(project_root, 'src')],  # Add src to Python path
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,

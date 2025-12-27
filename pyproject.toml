@@ -1,6 +1,6 @@
 [project]
 name = "blender-mcp"
-version = "1.5.0"
+version = "1.6.2"
 description = "Blender integration through the Model Context Protocol"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,4 +32,6 @@ package-dir = {"" = "src"}
 [project.urls]
 "Homepage" = "https://github.com/yourusername/blender-mcp"
 "Bug Tracker" = "https://github.com/yourusername/blender-mcp/issues"
+
+
 

@@ -204,6 +204,7 @@ class BlenderMCPServer:
 
         # Base handlers that are always available
         handlers = {
+            # Original handlers
             "get_scene_info": self.get_scene_info,
             "get_object_info": self.get_object_info,
             "get_viewport_screenshot": self.get_viewport_screenshot,
@@ -212,6 +213,47 @@ class BlenderMCPServer:
             "get_hyper3d_status": self.get_hyper3d_status,
             "get_sketchfab_status": self.get_sketchfab_status,
             "get_hunyuan3d_status": self.get_hunyuan3d_status,
+
+            # Context Layer - Rich state awareness for AI
+            "get_full_context": self.get_full_context,
+            "get_node_tree": self.get_node_tree,
+            "get_modifier_stack": self.get_modifier_stack,
+            "get_viewport_state": self.get_viewport_state,
+
+            # UI Control Actions
+            "switch_editor": self.switch_editor,
+            "set_viewport_shading": self.set_viewport_shading,
+            "set_view_angle": self.set_view_angle,
+
+            # Node Actions - Material and shader node manipulation
+            "create_material": self.create_material,
+            "add_node": self.add_node,
+            "remove_node": self.remove_node,
+            "set_node_value": self.set_node_value,
+            "connect_nodes": self.connect_nodes,
+            "disconnect_node": self.disconnect_node,
+
+            # Modifier Actions - Non-destructive operations
+            "add_modifier": self.add_modifier,
+            "remove_modifier": self.remove_modifier,
+            "apply_modifier": self.apply_modifier,
+            "set_modifier_settings": self.set_modifier_settings,
+
+            # Object Actions - Selection, mode, primitives, transforms
+            "select_object": self.select_object,
+            "set_mode": self.set_mode,
+            "add_primitive": self.add_primitive,
+            "transform_object": self.transform_object,
+            "delete_object": self.delete_object,
+
+            # Animation Actions - Keyframes and timeline
+            "set_frame": self.set_frame,
+            "set_frame_range": self.set_frame_range,
+            "insert_keyframe": self.insert_keyframe,
+            "delete_keyframe": self.delete_keyframe,
+
+            # Action Sequencing - Multi-step atomic operations
+            "execute_action_sequence": self.execute_action_sequence,
         }
 
         # Add Polyhaven handlers only if enabled
@@ -511,7 +553,1208 @@ class BlenderMCPServer:
             # Return error instead of raising - allows error to be sent back to client
             return {"executed": False, "error": f"Code execution error: {str(e)}"}
 
+    # ============================================================
+    # CONTEXT LAYER - Rich state awareness for AI
+    # ============================================================
 
+    def get_full_context(self):
+        """
+        Get comprehensive Blender context for AI decision-making.
+        This provides full awareness of UI state, selection, viewport, nodes, etc.
+        """
+        try:
+            context = {
+                "editor": self._get_editor_context(),
+                "viewport": self._get_viewport_context(),
+                "node_editor": self._get_node_editor_context(),
+                "selection": self._get_selection_context(),
+                "scene": self._get_scene_context(),
+                "objects": self._get_objects_summary(),
+                "materials": [m.name for m in bpy.data.materials],
+                "modifiers": self._get_active_modifiers(),
+            }
+            return context
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _get_editor_context(self):
+        """Get current editor state."""
+        area = bpy.context.area
+        return {
+            "type": area.type if area else None,
+            "mode": bpy.context.mode,
+            "active_tool": self._get_active_tool_name(),
+        }
+
+    def _get_active_tool_name(self):
+        """Get name of active tool."""
+        try:
+            workspace = bpy.context.workspace
+            tool = workspace.tools.from_space_view3d_mode(bpy.context.mode, create=False)
+            return tool.idname if tool else None
+        except:
+            return None
+
+    def _get_viewport_context(self):
+        """Get 3D viewport state."""
+        for area in bpy.context.screen.areas:
+            if area.type == 'VIEW_3D':
+                for space in area.spaces:
+                    if space.type == 'VIEW_3D':
+                        region_3d = None
+                        for region in area.regions:
+                            if region.type == 'WINDOW':
+                                region_3d = space.region_3d
+                                break
+                        return {
+                            "shading_type": space.shading.type,
+                            "shading_light": space.shading.light,
+                            "show_overlays": space.overlay.show_overlays,
+                            "is_camera_view": region_3d.view_perspective == 'CAMERA' if region_3d else False,
+                            "view_perspective": region_3d.view_perspective if region_3d else None,
+                        }
+        return None
+
+    def _get_node_editor_context(self):
+        """Get node editor state."""
+        for area in bpy.context.screen.areas:
+            if area.type == 'NODE_EDITOR':
+                for space in area.spaces:
+                    if space.type == 'NODE_EDITOR':
+                        tree = space.node_tree
+                        active_mat = None
+                        if bpy.context.active_object and bpy.context.active_object.active_material:
+                            active_mat = bpy.context.active_object.active_material.name
+                        return {
+                            "tree_type": space.tree_type,
+                            "active_material": active_mat,
+                            "active_node": tree.nodes.active.name if tree and tree.nodes.active else None,
+                            "node_count": len(tree.nodes) if tree else 0,
+                        }
+        return None
+
+    def _get_selection_context(self):
+        """Get selection state."""
+        obj = bpy.context.active_object
+        result = {
+            "active_object": obj.name if obj else None,
+            "active_object_type": obj.type if obj else None,
+            "selected_objects": [o.name for o in bpy.context.selected_objects],
+            "selected_count": len(bpy.context.selected_objects),
+            "selected_vertices": 0,
+            "selected_edges": 0,
+            "selected_faces": 0,
+        }
+
+        # Get edit mode selection counts
+        if obj and obj.type == 'MESH' and bpy.context.mode == 'EDIT_MESH':
+            try:
+                import bmesh
+                bm = bmesh.from_edit_mesh(obj.data)
+                result["selected_vertices"] = len([v for v in bm.verts if v.select])
+                result["selected_edges"] = len([e for e in bm.edges if e.select])
+                result["selected_faces"] = len([f for f in bm.faces if f.select])
+            except:
+                pass
+
+        return result
+
+    def _get_scene_context(self):
+        """Get scene state."""
+        scene = bpy.context.scene
+        return {
+            "name": scene.name,
+            "frame_current": scene.frame_current,
+            "frame_start": scene.frame_start,
+            "frame_end": scene.frame_end,
+            "render_engine": scene.render.engine,
+            "active_camera": scene.camera.name if scene.camera else None,
+        }
+
+    def _get_objects_summary(self):
+        """Get summary of scene objects."""
+        objects = bpy.context.scene.objects
+        return {
+            "count": len(objects),
+            "meshes": [o.name for o in objects if o.type == 'MESH'],
+            "cameras": [o.name for o in objects if o.type == 'CAMERA'],
+            "lights": [o.name for o in objects if o.type == 'LIGHT'],
+            "empties": [o.name for o in objects if o.type == 'EMPTY'],
+            "armatures": [o.name for o in objects if o.type == 'ARMATURE'],
+        }
+
+    def _get_active_modifiers(self):
+        """Get modifiers on active object."""
+        obj = bpy.context.active_object
+        if not obj:
+            return []
+        return [{"name": m.name, "type": m.type} for m in obj.modifiers]
+
+    def get_node_tree(self, material_name=None, tree_type="shader"):
+        """
+        Get complete node tree structure.
+
+        Args:
+            material_name: Material name for shader nodes (None = active material)
+            tree_type: 'shader', 'geometry', 'compositor', 'world'
+        """
+        try:
+            tree = None
+            material = None
+
+            if tree_type == "shader":
+                if material_name:
+                    mat = bpy.data.materials.get(material_name)
+                else:
+                    obj = bpy.context.active_object
+                    mat = obj.active_material if obj else None
+
+                if not mat or not mat.use_nodes:
+                    return {"error": "No material with nodes found"}
+
+                tree = mat.node_tree
+                material = mat.name
+
+            elif tree_type == "geometry":
+                obj = bpy.context.active_object
+                if obj:
+                    for mod in obj.modifiers:
+                        if mod.type == 'NODES' and mod.node_group:
+                            tree = mod.node_group
+                            break
+                if not tree:
+                    return {"error": "No geometry nodes modifier found"}
+
+            elif tree_type == "compositor":
+                if bpy.context.scene.use_nodes:
+                    tree = bpy.context.scene.node_tree
+                else:
+                    return {"error": "Compositor nodes not enabled"}
+
+            elif tree_type == "world":
+                world = bpy.context.scene.world
+                if world and world.use_nodes:
+                    tree = world.node_tree
+                else:
+                    return {"error": "World nodes not enabled"}
+            else:
+                return {"error": f"Unknown tree_type: {tree_type}"}
+
+            if not tree:
+                return {"error": "No node tree found"}
+
+            # Build node data
+            nodes = []
+            for node in tree.nodes:
+                node_data = {
+                    "name": node.name,
+                    "type": node.bl_idname,
+                    "label": node.label if node.label else None,
+                    "location": [round(node.location.x, 1), round(node.location.y, 1)],
+                    "inputs": [],
+                    "outputs": [],
+                }
+
+                # Get inputs
+                for inp in node.inputs:
+                    inp_data = {
+                        "name": inp.name,
+                        "type": inp.type,
+                        "is_linked": inp.is_linked,
+                    }
+                    if not inp.is_linked and hasattr(inp, 'default_value'):
+                        try:
+                            val = inp.default_value
+                            if hasattr(val, '__iter__') and not isinstance(val, str):
+                                inp_data["value"] = [round(v, 4) if isinstance(v, float) else v for v in val]
+                            elif isinstance(val, float):
+                                inp_data["value"] = round(val, 4)
+                            else:
+                                inp_data["value"] = val
+                        except:
+                            pass
+                    node_data["inputs"].append(inp_data)
+
+                # Get outputs
+                for out in node.outputs:
+                    node_data["outputs"].append({
+                        "name": out.name,
+                        "type": out.type,
+                        "is_linked": out.is_linked,
+                    })
+
+                nodes.append(node_data)
+
+            # Build link data
+            links = []
+            for link in tree.links:
+                links.append({
+                    "from_node": link.from_node.name,
+                    "from_socket": link.from_socket.name,
+                    "to_node": link.to_node.name,
+                    "to_socket": link.to_socket.name,
+                })
+
+            return {
+                "tree_type": tree_type,
+                "material": material,
+                "nodes": nodes,
+                "links": links,
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def get_modifier_stack(self, object_name=None):
+        """Get modifier stack for an object with detailed settings."""
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+            else:
+                obj = bpy.context.active_object
+
+            if not obj:
+                return {"error": "No object found"}
+
+            modifiers = []
+            for mod in obj.modifiers:
+                mod_data = {
+                    "name": mod.name,
+                    "type": mod.type,
+                    "show_viewport": mod.show_viewport,
+                    "show_render": mod.show_render,
+                    "settings": {},
+                }
+
+                # Get settings based on modifier type
+                if mod.type == 'SUBSURF':
+                    mod_data["settings"] = {
+                        "levels": mod.levels,
+                        "render_levels": mod.render_levels,
+                        "subdivision_type": mod.subdivision_type,
+                    }
+                elif mod.type == 'BEVEL':
+                    mod_data["settings"] = {
+                        "width": round(mod.width, 4),
+                        "segments": mod.segments,
+                        "limit_method": mod.limit_method,
+                        "affect": mod.affect,
+                    }
+                elif mod.type == 'BOOLEAN':
+                    mod_data["settings"] = {
+                        "operation": mod.operation,
+                        "object": mod.object.name if mod.object else None,
+                        "solver": mod.solver,
+                    }
+                elif mod.type == 'MIRROR':
+                    mod_data["settings"] = {
+                        "use_axis": [mod.use_axis[0], mod.use_axis[1], mod.use_axis[2]],
+                        "use_clip": mod.use_clip,
+                        "mirror_object": mod.mirror_object.name if mod.mirror_object else None,
+                    }
+                elif mod.type == 'ARRAY':
+                    mod_data["settings"] = {
+                        "count": mod.count,
+                        "use_relative_offset": mod.use_relative_offset,
+                        "relative_offset_displace": [round(v, 4) for v in mod.relative_offset_displace],
+                        "use_constant_offset": mod.use_constant_offset,
+                        "constant_offset_displace": [round(v, 4) for v in mod.constant_offset_displace],
+                    }
+                elif mod.type == 'SOLIDIFY':
+                    mod_data["settings"] = {
+                        "thickness": round(mod.thickness, 4),
+                        "offset": round(mod.offset, 4),
+                        "use_rim": mod.use_rim,
+                    }
+                elif mod.type == 'DECIMATE':
+                    mod_data["settings"] = {
+                        "decimate_type": mod.decimate_type,
+                        "ratio": round(mod.ratio, 4),
+                    }
+                elif mod.type == 'SMOOTH':
+                    mod_data["settings"] = {
+                        "factor": round(mod.factor, 4),
+                        "iterations": mod.iterations,
+                    }
+                elif mod.type == 'NODES':
+                    mod_data["settings"] = {
+                        "node_group": mod.node_group.name if mod.node_group else None,
+                    }
+                elif mod.type == 'ARMATURE':
+                    mod_data["settings"] = {
+                        "object": mod.object.name if mod.object else None,
+                        "use_vertex_groups": mod.use_vertex_groups,
+                    }
+                # Add more modifier types as needed
+
+                modifiers.append(mod_data)
+
+            return {
+                "object": obj.name,
+                "object_type": obj.type,
+                "modifiers": modifiers,
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def get_viewport_state(self):
+        """Get current 3D viewport configuration in detail."""
+        try:
+            for area in bpy.context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for space in area.spaces:
+                        if space.type == 'VIEW_3D':
+                            return {
+                                "shading": {
+                                    "type": space.shading.type,
+                                    "light": space.shading.light,
+                                    "color_type": space.shading.color_type,
+                                    "show_xray": space.shading.show_xray,
+                                    "show_shadows": space.shading.show_shadows,
+                                    "show_cavity": space.shading.show_cavity,
+                                    "use_dof": space.shading.use_dof,
+                                },
+                                "overlay": {
+                                    "show_overlays": space.overlay.show_overlays,
+                                    "show_floor": space.overlay.show_floor,
+                                    "show_axis_x": space.overlay.show_axis_x,
+                                    "show_axis_y": space.overlay.show_axis_y,
+                                    "show_wireframes": space.overlay.show_wireframes,
+                                    "show_face_orientation": space.overlay.show_face_orientation,
+                                    "show_bones": space.overlay.show_bones,
+                                },
+                                "view": {
+                                    "perspective": space.region_3d.view_perspective if space.region_3d else None,
+                                    "is_perspective": space.region_3d.is_perspective if space.region_3d else None,
+                                    "lens": round(space.lens, 1),
+                                    "clip_start": space.clip_start,
+                                    "clip_end": space.clip_end,
+                                },
+                            }
+            return {"error": "No 3D viewport found"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ============================================================
+    # UI CONTROL ACTIONS
+    # ============================================================
+
+    def switch_editor(self, editor_type, tree_type=None):
+        """
+        Switch the current area to a different editor type.
+
+        Args:
+            editor_type: VIEW_3D, NODE_EDITOR, PROPERTIES, OUTLINER, UV,
+                        IMAGE_EDITOR, SEQUENCE_EDITOR, GRAPH_EDITOR, etc.
+            tree_type: For NODE_EDITOR: ShaderNodeTree, GeometryNodeTree,
+                       CompositorNodeTree, TextureNodeTree
+        """
+        try:
+            area = bpy.context.area
+            if not area:
+                return {"error": "No active area"}
+
+            valid_types = ['VIEW_3D', 'NODE_EDITOR', 'PROPERTIES', 'OUTLINER',
+                          'IMAGE_EDITOR', 'SEQUENCE_EDITOR', 'GRAPH_EDITOR',
+                          'DOPESHEET_EDITOR', 'NLA_EDITOR', 'TEXT_EDITOR',
+                          'CONSOLE', 'INFO', 'FILE_BROWSER', 'SPREADSHEET']
+
+            if editor_type not in valid_types:
+                return {"error": f"Invalid editor_type: {editor_type}. Valid: {valid_types}"}
+
+            area.type = editor_type
+
+            # Set tree type for node editor
+            if editor_type == 'NODE_EDITOR' and tree_type:
+                for space in area.spaces:
+                    if space.type == 'NODE_EDITOR':
+                        valid_trees = ['ShaderNodeTree', 'GeometryNodeTree',
+                                       'CompositorNodeTree', 'TextureNodeTree']
+                        if tree_type in valid_trees:
+                            space.tree_type = tree_type
+                        else:
+                            return {"error": f"Invalid tree_type: {tree_type}. Valid: {valid_trees}"}
+
+            return {"success": True, "editor_type": editor_type, "tree_type": tree_type}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def set_viewport_shading(self, shading_type, light=None, color_type=None):
+        """
+        Set 3D viewport shading mode.
+
+        Args:
+            shading_type: WIREFRAME, SOLID, MATERIAL, RENDERED
+            light: STUDIO, MATCAP, FLAT (for SOLID mode)
+            color_type: MATERIAL, SINGLE, OBJECT, RANDOM, VERTEX, TEXTURE
+        """
+        try:
+            for area in bpy.context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for space in area.spaces:
+                        if space.type == 'VIEW_3D':
+                            valid_shading = ['WIREFRAME', 'SOLID', 'MATERIAL', 'RENDERED']
+                            if shading_type not in valid_shading:
+                                return {"error": f"Invalid shading_type: {shading_type}"}
+
+                            space.shading.type = shading_type
+
+                            if light and shading_type == 'SOLID':
+                                valid_light = ['STUDIO', 'MATCAP', 'FLAT']
+                                if light in valid_light:
+                                    space.shading.light = light
+
+                            if color_type and shading_type == 'SOLID':
+                                valid_color = ['MATERIAL', 'SINGLE', 'OBJECT',
+                                              'RANDOM', 'VERTEX', 'TEXTURE']
+                                if color_type in valid_color:
+                                    space.shading.color_type = color_type
+
+                            return {"success": True, "shading_type": shading_type}
+
+            return {"error": "No 3D viewport found"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def set_view_angle(self, view):
+        """
+        Set 3D viewport view angle.
+
+        Args:
+            view: FRONT, BACK, LEFT, RIGHT, TOP, BOTTOM, CAMERA, PERSP, ORTHO
+        """
+        try:
+            view_map = {
+                'FRONT': 'FRONT',
+                'BACK': 'BACK',
+                'LEFT': 'LEFT',
+                'RIGHT': 'RIGHT',
+                'TOP': 'TOP',
+                'BOTTOM': 'BOTTOM',
+            }
+
+            for area in bpy.context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    with bpy.context.temp_override(area=area):
+                        if view == 'CAMERA':
+                            bpy.ops.view3d.view_camera()
+                        elif view == 'PERSP':
+                            bpy.ops.view3d.view_persportho()
+                            # Ensure perspective
+                            for space in area.spaces:
+                                if space.type == 'VIEW_3D' and space.region_3d:
+                                    if not space.region_3d.is_perspective:
+                                        bpy.ops.view3d.view_persportho()
+                        elif view == 'ORTHO':
+                            bpy.ops.view3d.view_persportho()
+                            # Ensure orthographic
+                            for space in area.spaces:
+                                if space.type == 'VIEW_3D' and space.region_3d:
+                                    if space.region_3d.is_perspective:
+                                        bpy.ops.view3d.view_persportho()
+                        elif view in view_map:
+                            numpad_map = {
+                                'FRONT': 'NUMPAD_1',
+                                'BACK': 'NUMPAD_1',  # Ctrl+1
+                                'RIGHT': 'NUMPAD_3',
+                                'LEFT': 'NUMPAD_3',  # Ctrl+3
+                                'TOP': 'NUMPAD_7',
+                                'BOTTOM': 'NUMPAD_7',  # Ctrl+7
+                            }
+                            bpy.ops.view3d.view_axis(type=view)
+                        else:
+                            return {"error": f"Invalid view: {view}"}
+
+                    return {"success": True, "view": view}
+
+            return {"error": "No 3D viewport found"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ============================================================
+    # NODE ACTIONS
+    # ============================================================
+
+    def create_material(self, name, assign_to_active=True):
+        """
+        Create a new material with nodes enabled.
+
+        Args:
+            name: Material name
+            assign_to_active: Assign to active object (default True)
+        """
+        try:
+            mat = bpy.data.materials.new(name=name)
+            mat.use_nodes = True
+
+            if assign_to_active:
+                obj = bpy.context.active_object
+                if obj and hasattr(obj.data, 'materials'):
+                    if obj.data.materials:
+                        obj.data.materials.append(mat)
+                    else:
+                        obj.data.materials.append(mat)
+                    obj.active_material = mat
+
+            return {"success": True, "material_name": mat.name}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def add_node(self, node_type, location=None, material_name=None):
+        """
+        Add a node to the current node tree.
+
+        Args:
+            node_type: Blender node type (e.g., 'ShaderNodeBsdfPrincipled')
+            location: [x, y] coordinates (optional)
+            material_name: Material name (optional, uses active if None)
+        """
+        try:
+            # Get the node tree
+            if material_name:
+                mat = bpy.data.materials.get(material_name)
+            else:
+                obj = bpy.context.active_object
+                mat = obj.active_material if obj else None
+
+            if not mat or not mat.use_nodes:
+                return {"error": "No material with nodes found"}
+
+            tree = mat.node_tree
+
+            # Create the node
+            node = tree.nodes.new(type=node_type)
+
+            if location:
+                node.location = (location[0], location[1])
+            else:
+                # Auto-position: find average location of existing nodes
+                if tree.nodes:
+                    avg_x = sum(n.location.x for n in tree.nodes) / len(tree.nodes)
+                    avg_y = sum(n.location.y for n in tree.nodes) / len(tree.nodes)
+                    node.location = (avg_x - 200, avg_y)
+
+            return {"success": True, "node_name": node.name, "node_type": node_type}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def remove_node(self, node_name, material_name=None):
+        """Remove a node by name."""
+        try:
+            if material_name:
+                mat = bpy.data.materials.get(material_name)
+            else:
+                obj = bpy.context.active_object
+                mat = obj.active_material if obj else None
+
+            if not mat or not mat.use_nodes:
+                return {"error": "No material with nodes found"}
+
+            tree = mat.node_tree
+            node = tree.nodes.get(node_name)
+
+            if not node:
+                return {"error": f"Node '{node_name}' not found"}
+
+            tree.nodes.remove(node)
+            return {"success": True, "removed": node_name}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def set_node_value(self, node_name, input_name, value, material_name=None):
+        """
+        Set a node input value.
+
+        Args:
+            node_name: Name of the node
+            input_name: Name of the input socket
+            value: Value to set (number, [r,g,b,a], etc.)
+            material_name: Material name (optional)
+        """
+        try:
+            if material_name:
+                mat = bpy.data.materials.get(material_name)
+            else:
+                obj = bpy.context.active_object
+                mat = obj.active_material if obj else None
+
+            if not mat or not mat.use_nodes:
+                return {"error": "No material with nodes found"}
+
+            tree = mat.node_tree
+            node = tree.nodes.get(node_name)
+
+            if not node:
+                return {"error": f"Node '{node_name}' not found"}
+
+            # Find the input socket
+            inp = None
+            for socket in node.inputs:
+                if socket.name == input_name:
+                    inp = socket
+                    break
+
+            if not inp:
+                available = [s.name for s in node.inputs]
+                return {"error": f"Input '{input_name}' not found. Available: {available}"}
+
+            # Set the value
+            if hasattr(inp, 'default_value'):
+                if isinstance(value, list):
+                    inp.default_value = value
+                else:
+                    inp.default_value = value
+            else:
+                return {"error": f"Input '{input_name}' has no default_value"}
+
+            return {"success": True, "node": node_name, "input": input_name, "value": value}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def connect_nodes(self, from_node, from_socket, to_node, to_socket, material_name=None):
+        """
+        Connect two nodes.
+
+        Args:
+            from_node: Source node name
+            from_socket: Source output socket name
+            to_node: Destination node name
+            to_socket: Destination input socket name
+            material_name: Material name (optional)
+        """
+        try:
+            if material_name:
+                mat = bpy.data.materials.get(material_name)
+            else:
+                obj = bpy.context.active_object
+                mat = obj.active_material if obj else None
+
+            if not mat or not mat.use_nodes:
+                return {"error": "No material with nodes found"}
+
+            tree = mat.node_tree
+
+            # Get source node and socket
+            src_node = tree.nodes.get(from_node)
+            if not src_node:
+                return {"error": f"Source node '{from_node}' not found"}
+
+            src_socket = None
+            for out in src_node.outputs:
+                if out.name == from_socket:
+                    src_socket = out
+                    break
+            if not src_socket:
+                available = [o.name for o in src_node.outputs]
+                return {"error": f"Output socket '{from_socket}' not found. Available: {available}"}
+
+            # Get destination node and socket
+            dst_node = tree.nodes.get(to_node)
+            if not dst_node:
+                return {"error": f"Destination node '{to_node}' not found"}
+
+            dst_socket = None
+            for inp in dst_node.inputs:
+                if inp.name == to_socket:
+                    dst_socket = inp
+                    break
+            if not dst_socket:
+                available = [i.name for i in dst_node.inputs]
+                return {"error": f"Input socket '{to_socket}' not found. Available: {available}"}
+
+            # Create link
+            tree.links.new(src_socket, dst_socket)
+
+            return {
+                "success": True,
+                "link": f"{from_node}.{from_socket} -> {to_node}.{to_socket}"
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def disconnect_node(self, node_name, socket_name, socket_type="input", material_name=None):
+        """
+        Disconnect a node socket.
+
+        Args:
+            node_name: Node name
+            socket_name: Socket name to disconnect
+            socket_type: 'input' or 'output'
+            material_name: Material name (optional)
+        """
+        try:
+            if material_name:
+                mat = bpy.data.materials.get(material_name)
+            else:
+                obj = bpy.context.active_object
+                mat = obj.active_material if obj else None
+
+            if not mat or not mat.use_nodes:
+                return {"error": "No material with nodes found"}
+
+            tree = mat.node_tree
+            node = tree.nodes.get(node_name)
+
+            if not node:
+                return {"error": f"Node '{node_name}' not found"}
+
+            # Get the socket
+            sockets = node.inputs if socket_type == "input" else node.outputs
+            socket = None
+            for s in sockets:
+                if s.name == socket_name:
+                    socket = s
+                    break
+
+            if not socket:
+                return {"error": f"Socket '{socket_name}' not found"}
+
+            # Remove all links to/from this socket
+            links_removed = 0
+            for link in list(tree.links):
+                if socket_type == "input" and link.to_socket == socket:
+                    tree.links.remove(link)
+                    links_removed += 1
+                elif socket_type == "output" and link.from_socket == socket:
+                    tree.links.remove(link)
+                    links_removed += 1
+
+            return {"success": True, "links_removed": links_removed}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ============================================================
+    # MODIFIER ACTIONS
+    # ============================================================
+
+    def add_modifier(self, modifier_type, name=None, object_name=None, settings=None):
+        """
+        Add a modifier to an object.
+
+        Args:
+            modifier_type: SUBSURF, BEVEL, BOOLEAN, MIRROR, ARRAY, SOLIDIFY, etc.
+            name: Custom modifier name (optional)
+            object_name: Target object (optional, uses active if None)
+            settings: Dict of modifier settings (optional)
+        """
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+            else:
+                obj = bpy.context.active_object
+
+            if not obj:
+                return {"error": "No object found"}
+
+            # Add the modifier
+            mod = obj.modifiers.new(name=name or modifier_type, type=modifier_type)
+
+            # Apply settings if provided
+            if settings:
+                for key, value in settings.items():
+                    if hasattr(mod, key):
+                        setattr(mod, key, value)
+
+            return {"success": True, "modifier_name": mod.name, "type": modifier_type}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def remove_modifier(self, modifier_name, object_name=None):
+        """Remove a modifier by name."""
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+            else:
+                obj = bpy.context.active_object
+
+            if not obj:
+                return {"error": "No object found"}
+
+            mod = obj.modifiers.get(modifier_name)
+            if not mod:
+                return {"error": f"Modifier '{modifier_name}' not found"}
+
+            obj.modifiers.remove(mod)
+            return {"success": True, "removed": modifier_name}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def apply_modifier(self, modifier_name, object_name=None):
+        """Apply a modifier (make it permanent)."""
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+            else:
+                obj = bpy.context.active_object
+
+            if not obj:
+                return {"error": "No object found"}
+
+            mod = obj.modifiers.get(modifier_name)
+            if not mod:
+                return {"error": f"Modifier '{modifier_name}' not found"}
+
+            # Need to be in object mode to apply
+            if bpy.context.mode != 'OBJECT':
+                bpy.ops.object.mode_set(mode='OBJECT')
+
+            # Select and make active
+            bpy.context.view_layer.objects.active = obj
+
+            bpy.ops.object.modifier_apply(modifier=modifier_name)
+            return {"success": True, "applied": modifier_name}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def set_modifier_settings(self, modifier_name, settings, object_name=None):
+        """
+        Update modifier settings.
+
+        Args:
+            modifier_name: Name of the modifier
+            settings: Dict of settings to update
+            object_name: Target object (optional)
+        """
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+            else:
+                obj = bpy.context.active_object
+
+            if not obj:
+                return {"error": "No object found"}
+
+            mod = obj.modifiers.get(modifier_name)
+            if not mod:
+                return {"error": f"Modifier '{modifier_name}' not found"}
+
+            updated = []
+            for key, value in settings.items():
+                if hasattr(mod, key):
+                    setattr(mod, key, value)
+                    updated.append(key)
+
+            return {"success": True, "modifier": modifier_name, "updated": updated}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ============================================================
+    # OBJECT ACTIONS
+    # ============================================================
+
+    def select_object(self, object_name, extend=False, active=True):
+        """
+        Select an object.
+
+        Args:
+            object_name: Name of object to select
+            extend: Add to selection (don't deselect others)
+            active: Make this the active object
+        """
+        try:
+            obj = bpy.data.objects.get(object_name)
+            if not obj:
+                return {"error": f"Object '{object_name}' not found"}
+
+            if not extend:
+                bpy.ops.object.select_all(action='DESELECT')
+
+            obj.select_set(True)
+
+            if active:
+                bpy.context.view_layer.objects.active = obj
+
+            return {"success": True, "selected": object_name, "active": active}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def set_mode(self, mode, object_name=None):
+        """
+        Set object mode.
+
+        Args:
+            mode: OBJECT, EDIT, SCULPT, VERTEX_PAINT, WEIGHT_PAINT, TEXTURE_PAINT
+            object_name: Target object (optional)
+        """
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+                if obj:
+                    bpy.context.view_layer.objects.active = obj
+
+            valid_modes = ['OBJECT', 'EDIT', 'SCULPT', 'VERTEX_PAINT',
+                          'WEIGHT_PAINT', 'TEXTURE_PAINT', 'POSE']
+
+            if mode not in valid_modes:
+                return {"error": f"Invalid mode: {mode}. Valid: {valid_modes}"}
+
+            if bpy.ops.object.mode_set.poll():
+                bpy.ops.object.mode_set(mode=mode)
+                return {"success": True, "mode": mode}
+            else:
+                return {"error": "Cannot set mode in current context"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def add_primitive(self, primitive_type, location=None, size=None, name=None):
+        """
+        Add a primitive mesh object.
+
+        Args:
+            primitive_type: CUBE, SPHERE, CYLINDER, CONE, TORUS, PLANE, CIRCLE, MONKEY
+            location: [x, y, z] (optional)
+            size: Size or radius (optional)
+            name: Custom name (optional)
+        """
+        try:
+            # Map primitive types to operators
+            primitives = {
+                'CUBE': lambda: bpy.ops.mesh.primitive_cube_add(size=size or 2, location=location or (0, 0, 0)),
+                'SPHERE': lambda: bpy.ops.mesh.primitive_uv_sphere_add(radius=size or 1, location=location or (0, 0, 0)),
+                'CYLINDER': lambda: bpy.ops.mesh.primitive_cylinder_add(radius=size or 1, location=location or (0, 0, 0)),
+                'CONE': lambda: bpy.ops.mesh.primitive_cone_add(radius1=size or 1, location=location or (0, 0, 0)),
+                'TORUS': lambda: bpy.ops.mesh.primitive_torus_add(major_radius=size or 1, location=location or (0, 0, 0)),
+                'PLANE': lambda: bpy.ops.mesh.primitive_plane_add(size=size or 2, location=location or (0, 0, 0)),
+                'CIRCLE': lambda: bpy.ops.mesh.primitive_circle_add(radius=size or 1, location=location or (0, 0, 0)),
+                'MONKEY': lambda: bpy.ops.mesh.primitive_monkey_add(size=size or 2, location=location or (0, 0, 0)),
+                'EMPTY': lambda: bpy.ops.object.empty_add(type='PLAIN_AXES', location=location or (0, 0, 0)),
+                'CAMERA': lambda: bpy.ops.object.camera_add(location=location or (0, 0, 0)),
+                'LIGHT': lambda: bpy.ops.object.light_add(type='POINT', location=location or (0, 0, 0)),
+            }
+
+            if primitive_type not in primitives:
+                return {"error": f"Invalid primitive_type: {primitive_type}. Valid: {list(primitives.keys())}"}
+
+            primitives[primitive_type]()
+
+            new_obj = bpy.context.active_object
+            if name:
+                new_obj.name = name
+
+            return {"success": True, "object_name": new_obj.name, "type": primitive_type}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def transform_object(self, object_name=None, location=None, rotation=None, scale=None):
+        """
+        Transform an object.
+
+        Args:
+            object_name: Target object (optional, uses active if None)
+            location: [x, y, z] absolute position
+            rotation: [x, y, z] rotation in degrees
+            scale: [x, y, z] or single value for uniform scale
+        """
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+            else:
+                obj = bpy.context.active_object
+
+            if not obj:
+                return {"error": "No object found"}
+
+            if location:
+                obj.location = location
+
+            if rotation:
+                import math
+                obj.rotation_euler = [math.radians(r) for r in rotation]
+
+            if scale:
+                if isinstance(scale, (int, float)):
+                    obj.scale = [scale, scale, scale]
+                else:
+                    obj.scale = scale
+
+            return {
+                "success": True,
+                "object": obj.name,
+                "location": list(obj.location),
+                "rotation": [round(r, 4) for r in obj.rotation_euler],
+                "scale": list(obj.scale)
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def delete_object(self, object_name=None):
+        """Delete an object."""
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+                if not obj:
+                    return {"error": f"Object '{object_name}' not found"}
+                bpy.data.objects.remove(obj, do_unlink=True)
+            else:
+                obj = bpy.context.active_object
+                if not obj:
+                    return {"error": "No active object"}
+                name = obj.name
+                bpy.data.objects.remove(obj, do_unlink=True)
+                object_name = name
+
+            return {"success": True, "deleted": object_name}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ============================================================
+    # ANIMATION ACTIONS
+    # ============================================================
+
+    def set_frame(self, frame):
+        """Set current frame."""
+        try:
+            bpy.context.scene.frame_set(int(frame))
+            return {"success": True, "frame": frame}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def set_frame_range(self, start, end):
+        """Set animation frame range."""
+        try:
+            bpy.context.scene.frame_start = int(start)
+            bpy.context.scene.frame_end = int(end)
+            return {"success": True, "start": start, "end": end}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def insert_keyframe(self, data_path, frame=None, object_name=None):
+        """
+        Insert a keyframe.
+
+        Args:
+            data_path: 'location', 'rotation_euler', 'scale', or specific path
+            frame: Frame number (optional, uses current frame if None)
+            object_name: Target object (optional)
+        """
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+            else:
+                obj = bpy.context.active_object
+
+            if not obj:
+                return {"error": "No object found"}
+
+            frame = frame or bpy.context.scene.frame_current
+            obj.keyframe_insert(data_path=data_path, frame=frame)
+
+            return {"success": True, "object": obj.name, "data_path": data_path, "frame": frame}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def delete_keyframe(self, data_path, frame=None, object_name=None):
+        """Delete a keyframe."""
+        try:
+            if object_name:
+                obj = bpy.data.objects.get(object_name)
+            else:
+                obj = bpy.context.active_object
+
+            if not obj:
+                return {"error": "No object found"}
+
+            frame = frame or bpy.context.scene.frame_current
+            obj.keyframe_delete(data_path=data_path, frame=frame)
+
+            return {"success": True, "object": obj.name, "data_path": data_path, "frame": frame}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ============================================================
+    # ACTION SEQUENCING
+    # ============================================================
+
+    def execute_action_sequence(self, actions):
+        """
+        Execute a sequence of high-level actions atomically.
+
+        Args:
+            actions: List of action dicts, each with 'action' key and parameters
+            [
+                {"action": "add_node", "node_type": "ShaderNodeBsdfGlass"},
+                {"action": "set_node_value", "node_name": "Glass BSDF", "input_name": "IOR", "value": 1.5}
+            ]
+        """
+        try:
+            results = []
+            completed = 0
+
+            # Map action names to handler methods
+            action_handlers = {
+                "create_material": self.create_material,
+                "add_node": self.add_node,
+                "remove_node": self.remove_node,
+                "set_node_value": self.set_node_value,
+                "connect_nodes": self.connect_nodes,
+                "disconnect_node": self.disconnect_node,
+                "add_modifier": self.add_modifier,
+                "remove_modifier": self.remove_modifier,
+                "apply_modifier": self.apply_modifier,
+                "set_modifier_settings": self.set_modifier_settings,
+                "select_object": self.select_object,
+                "set_mode": self.set_mode,
+                "add_primitive": self.add_primitive,
+                "transform_object": self.transform_object,
+                "delete_object": self.delete_object,
+                "switch_editor": self.switch_editor,
+                "set_viewport_shading": self.set_viewport_shading,
+                "set_view_angle": self.set_view_angle,
+                "set_frame": self.set_frame,
+                "insert_keyframe": self.insert_keyframe,
+            }
+
+            for i, action_def in enumerate(actions):
+                action_name = action_def.get("action")
+                if not action_name:
+                    return {
+                        "success": False,
+                        "completed_actions": completed,
+                        "failed_at": i,
+                        "error": f"Action {i} missing 'action' key",
+                        "results": results
+                    }
+
+                handler = action_handlers.get(action_name)
+                if not handler:
+                    return {
+                        "success": False,
+                        "completed_actions": completed,
+                        "failed_at": i,
+                        "error": f"Unknown action: {action_name}",
+                        "results": results
+                    }
+
+                # Extract parameters (everything except 'action' key)
+                params = {k: v for k, v in action_def.items() if k != "action"}
+
+                # Execute the action
+                result = handler(**params)
+                results.append({"action": action_name, **result})
+
+                # Check for error
+                if "error" in result:
+                    return {
+                        "success": False,
+                        "completed_actions": completed,
+                        "failed_at": i,
+                        "error": result["error"],
+                        "results": results
+                    }
+
+                completed += 1
+
+            return {
+                "success": True,
+                "completed_actions": completed,
+                "results": results
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "completed_actions": completed,
+                "error": str(e),
+                "results": results
+            }
 
     def get_polyhaven_categories(self, asset_type):
         """Get categories for a specific asset type from Polyhaven"""

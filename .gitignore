@@ -8,11 +8,15 @@ wheels/
 
 # Virtual environments
 .venv
+build_env/
+
+# Build artifacts
+build_log.txt
+*.log
+package*.ps1
 
 # macOS
 .DS_Store
 
 # Local config secrets
 src/blender_mcp/config.py
-
-build_env

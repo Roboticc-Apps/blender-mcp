@@ -1,0 +1,263 @@
+{
+  "id": "blender-mcp",
+  "name": "Blender MCP",
+  "version": "1.6.2",
+  "description": "AI-powered 3D modeling and scene control in Blender with voice commands, rich context, and multi-step operations",
+  "author": "Blender MCP Contributors",
+  "category": "creative",
+  "permission_level": "moderate",
+  "platforms": ["win32"],
+  "server": {
+    "type": "python",
+    "entrypoint": "blender-mcp.exe"
+  },
+  "dependencies": {
+    "python_packages": ["blender-mcp"],
+    "system_packages": []
+  },
+  "requirements": {
+    "disk_space_mb": 50
+  },
+  "tools": [
+    {
+      "name": "get_full_context",
+      "description": "Get complete Blender context including active editor, viewport state, selection, scene settings, objects, and materials",
+      "category": "context"
+    },
+    {
+      "name": "get_scene_info",
+      "description": "Get comprehensive Blender scene information including all objects, selection state, materials, cameras, lights, and modifiers",
+      "category": "context"
+    },
+    {
+      "name": "get_object_info",
+      "description": "Get detailed information about a specific object including mesh data, modifiers, materials, and transforms",
+      "category": "context"
+    },
+    {
+      "name": "get_viewport_state",
+      "description": "Get current viewport settings including shading mode, overlays, camera view, and 3D cursor position",
+      "category": "context"
+    },
+    {
+      "name": "get_viewport_screenshot",
+      "description": "Capture a screenshot of the current Blender viewport",
+      "category": "context"
+    },
+    {
+      "name": "get_node_tree",
+      "description": "Get detailed node tree structure from a material or geometry nodes, including all nodes, values, and connections",
+      "category": "context"
+    },
+    {
+      "name": "get_modifier_stack",
+      "description": "Get the complete modifier stack for an object with all settings and values",
+      "category": "context"
+    },
+    {
+      "name": "execute_blender_code",
+      "description": "Execute Python code in Blender - create objects, modify materials, set up lighting, or any Blender operation",
+      "category": "core"
+    },
+    {
+      "name": "switch_editor",
+      "description": "Switch the active editor type in Blender (e.g., to node editor, properties, timeline)",
+      "category": "ui"
+    },
+    {
+      "name": "set_viewport_shading",
+      "description": "Change viewport shading mode (wireframe, solid, material preview, rendered)",
+      "category": "ui"
+    },
+    {
+      "name": "set_view_angle",
+      "description": "Set the viewport camera angle (top, front, side, camera view)",
+      "category": "ui"
+    },
+    {
+      "name": "create_material",
+      "description": "Create a new material with principled BSDF shader and optionally assign it to the active object",
+      "category": "materials"
+    },
+    {
+      "name": "add_node",
+      "description": "Add a node to a material's shader node tree",
+      "category": "nodes"
+    },
+    {
+      "name": "remove_node",
+      "description": "Remove a node from a material's shader node tree",
+      "category": "nodes"
+    },
+    {
+      "name": "set_node_value",
+      "description": "Set an input value on a shader node (e.g., color, roughness, strength)",
+      "category": "nodes"
+    },
+    {
+      "name": "connect_nodes",
+      "description": "Connect two nodes in a material's shader node tree",
+      "category": "nodes"
+    },
+    {
+      "name": "disconnect_node",
+      "description": "Disconnect a node's socket from its connections",
+      "category": "nodes"
+    },
+    {
+      "name": "add_modifier",
+      "description": "Add a modifier to an object (e.g., SUBSURF, BEVEL, ARRAY, MIRROR, BOOLEAN)",
+      "category": "modifiers"
+    },
+    {
+      "name": "remove_modifier",
+      "description": "Remove a modifier from an object",
+      "category": "modifiers"
+    },
+    {
+      "name": "apply_modifier",
+      "description": "Apply a modifier to permanently bake its effect into the mesh",
+      "category": "modifiers"
+    },
+    {
+      "name": "set_modifier_settings",
+      "description": "Update settings on an existing modifier",
+      "category": "modifiers"
+    },
+    {
+      "name": "select_object",
+      "description": "Select an object in the scene",
+      "category": "objects"
+    },
+    {
+      "name": "set_mode",
+      "description": "Set the interaction mode (Object, Edit, Sculpt, etc.)",
+      "category": "objects"
+    },
+    {
+      "name": "add_primitive",
+      "description": "Add a primitive mesh object (cube, sphere, cylinder, etc.)",
+      "category": "objects"
+    },
+    {
+      "name": "transform_object",
+      "description": "Transform an object's location, rotation, or scale",
+      "category": "objects"
+    },
+    {
+      "name": "delete_object",
+      "description": "Delete an object from the scene",
+      "category": "objects"
+    },
+    {
+      "name": "set_texture",
+      "description": "Set or create a texture for a material",
+      "category": "materials"
+    },
+    {
+      "name": "set_frame",
+      "description": "Set the current frame in the timeline",
+      "category": "animation"
+    },
+    {
+      "name": "set_frame_range",
+      "description": "Set the animation frame range",
+      "category": "animation"
+    },
+    {
+      "name": "insert_keyframe",
+      "description": "Insert a keyframe for an object property",
+      "category": "animation"
+    },
+    {
+      "name": "delete_keyframe",
+      "description": "Delete a keyframe from an object property",
+      "category": "animation"
+    },
+    {
+      "name": "execute_action_sequence",
+      "description": "Execute multiple actions in sequence atomically for multi-step operations",
+      "category": "sequencing"
+    },
+    {
+      "name": "get_polyhaven_status",
+      "description": "Check if Poly Haven integration is available",
+      "category": "assets"
+    },
+    {
+      "name": "get_polyhaven_categories",
+      "description": "Get available categories from Poly Haven asset library",
+      "category": "assets"
+    },
+    {
+      "name": "search_polyhaven_assets",
+      "description": "Search for assets on Poly Haven (HDRIs, textures, models)",
+      "category": "assets"
+    },
+    {
+      "name": "download_polyhaven_asset",
+      "description": "Download and import an asset from Poly Haven",
+      "category": "assets"
+    },
+    {
+      "name": "get_sketchfab_status",
+      "description": "Check if Sketchfab integration is available",
+      "category": "assets"
+    },
+    {
+      "name": "search_sketchfab_models",
+      "description": "Search for 3D models on Sketchfab",
+      "category": "assets"
+    },
+    {
+      "name": "download_sketchfab_model",
+      "description": "Download and import a model from Sketchfab",
+      "category": "assets"
+    },
+    {
+      "name": "get_hyper3d_status",
+      "description": "Check if Hyper3D/Rodin integration is available",
+      "category": "generation"
+    },
+    {
+      "name": "generate_hyper3d_model_via_text",
+      "description": "Generate a 3D model from text description using Hyper3D Rodin",
+      "category": "generation"
+    },
+    {
+      "name": "generate_hyper3d_model_via_images",
+      "description": "Generate a 3D model from reference images using Hyper3D Rodin",
+      "category": "generation"
+    },
+    {
+      "name": "poll_rodin_job_status",
+      "description": "Check the status of a Rodin generation job",
+      "category": "generation"
+    },
+    {
+      "name": "import_generated_asset",
+      "description": "Import a generated 3D asset from Rodin into Blender",
+      "category": "generation"
+    },
+    {
+      "name": "get_hunyuan3d_status",
+      "description": "Check if Hunyuan3D integration is available",
+      "category": "generation"
+    },
+    {
+      "name": "generate_hunyuan3d_model",
+      "description": "Generate a 3D model using Hunyuan3D",
+      "category": "generation"
+    },
+    {
+      "name": "poll_hunyuan_job_status",
+      "description": "Check the status of a Hunyuan3D generation job",
+      "category": "generation"
+    },
+    {
+      "name": "import_generated_asset_hunyuan",
+      "description": "Import a generated 3D asset from Hunyuan3D into Blender",
+      "category": "generation"
+    }
+  ]
+}

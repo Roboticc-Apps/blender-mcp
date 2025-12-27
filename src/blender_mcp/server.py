@@ -1028,6 +1028,574 @@ def import_generated_asset_hunyuan(
         return f"Error generating Hunyuan3D task: {str(e)}"
 
 
+# ============================================================================
+# AI CONTROL SYSTEM TOOLS - v1.6.1
+# Context Layer, UI Control, Node Actions, Modifier Actions, Object Actions,
+# Animation Actions, and Action Sequencing
+# ============================================================================
+
+@mcp.tool()
+def get_full_context(ctx: Context) -> str:
+    """
+    Get complete Blender context including active editor, viewport state, node editor state,
+    selection, scene settings, objects, materials, and modifiers.
+    Essential for AI to understand current Blender state.
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("get_full_context")
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error getting full context: {str(e)}"
+
+@mcp.tool()
+def get_node_tree(ctx: Context, material_name: str = None, tree_type: str = "shader") -> str:
+    """
+    Get detailed node tree structure from a material or geometry nodes.
+
+    Parameters:
+    - material_name: Name of the material (uses active material if not specified)
+    - tree_type: Type of node tree (shader, geometry, compositor)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("get_node_tree", {
+            "material_name": material_name,
+            "tree_type": tree_type
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error getting node tree: {str(e)}"
+
+@mcp.tool()
+def get_modifier_stack(ctx: Context, object_name: str = None) -> str:
+    """
+    Get the complete modifier stack for an object with all settings.
+
+    Parameters:
+    - object_name: Name of the object (uses active object if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("get_modifier_stack", {"object_name": object_name})
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error getting modifier stack: {str(e)}"
+
+@mcp.tool()
+def get_viewport_state(ctx: Context) -> str:
+    """
+    Get current viewport settings including shading mode, overlays, camera view, and 3D cursor position.
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("get_viewport_state")
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error getting viewport state: {str(e)}"
+
+@mcp.tool()
+def switch_editor(ctx: Context, editor_type: str) -> str:
+    """
+    Switch the active editor type in Blender.
+
+    Parameters:
+    - editor_type: Type of editor (VIEW_3D, NODE_EDITOR, PROPERTIES, OUTLINER, TIMELINE, etc.)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("switch_editor", {"editor_type": editor_type})
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error switching editor: {str(e)}"
+
+@mcp.tool()
+def set_viewport_shading(ctx: Context, shading_type: str) -> str:
+    """
+    Change viewport shading mode.
+
+    Parameters:
+    - shading_type: Shading mode (WIREFRAME, SOLID, MATERIAL, RENDERED)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("set_viewport_shading", {"shading_type": shading_type})
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error setting viewport shading: {str(e)}"
+
+@mcp.tool()
+def set_view_angle(ctx: Context, view: str) -> str:
+    """
+    Set the viewport camera angle.
+
+    Parameters:
+    - view: View angle (TOP, BOTTOM, FRONT, BACK, LEFT, RIGHT, CAMERA)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("set_view_angle", {"view": view})
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error setting view angle: {str(e)}"
+
+@mcp.tool()
+def create_material(ctx: Context, name: str, assign_to_active: bool = True) -> str:
+    """
+    Create a new material with principled BSDF shader.
+
+    Parameters:
+    - name: Name for the new material
+    - assign_to_active: Whether to assign to the active object (default: True)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("create_material", {
+            "name": name,
+            "assign_to_active": assign_to_active
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error creating material: {str(e)}"
+
+@mcp.tool()
+def add_node(ctx: Context, node_type: str, location: list = None, material_name: str = None) -> str:
+    """
+    Add a node to a material's shader node tree.
+
+    Parameters:
+    - node_type: Type of node (e.g., ShaderNodeMixRGB, ShaderNodeTexImage)
+    - location: X, Y location [x, y] (optional)
+    - material_name: Name of the material (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("add_node", {
+            "node_type": node_type,
+            "location": location,
+            "material_name": material_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error adding node: {str(e)}"
+
+@mcp.tool()
+def remove_node(ctx: Context, node_name: str, material_name: str = None) -> str:
+    """
+    Remove a node from a material's shader node tree.
+
+    Parameters:
+    - node_name: Name of the node to remove
+    - material_name: Name of the material (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("remove_node", {
+            "node_name": node_name,
+            "material_name": material_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error removing node: {str(e)}"
+
+@mcp.tool()
+def set_node_value(ctx: Context, node_name: str, input_name: str, value, material_name: str = None) -> str:
+    """
+    Set an input value on a shader node.
+
+    Parameters:
+    - node_name: Name of the node
+    - input_name: Name of the input (e.g., 'Base Color', 'Roughness')
+    - value: Value to set (number or array for colors/vectors)
+    - material_name: Name of the material (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("set_node_value", {
+            "node_name": node_name,
+            "input_name": input_name,
+            "value": value,
+            "material_name": material_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error setting node value: {str(e)}"
+
+@mcp.tool()
+def connect_nodes(ctx: Context, from_node: str, from_socket: str, to_node: str, to_socket: str, material_name: str = None) -> str:
+    """
+    Connect two nodes in a material's shader node tree.
+
+    Parameters:
+    - from_node: Name of the source node
+    - from_socket: Name or index of the output socket
+    - to_node: Name of the destination node
+    - to_socket: Name or index of the input socket
+    - material_name: Name of the material (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("connect_nodes", {
+            "from_node": from_node,
+            "from_socket": from_socket,
+            "to_node": to_node,
+            "to_socket": to_socket,
+            "material_name": material_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error connecting nodes: {str(e)}"
+
+@mcp.tool()
+def disconnect_node(ctx: Context, node_name: str, socket_name: str, socket_type: str = "input", material_name: str = None) -> str:
+    """
+    Disconnect a node's socket from its connections.
+
+    Parameters:
+    - node_name: Name of the node
+    - socket_name: Name or index of the socket
+    - socket_type: 'input' or 'output' (default: input)
+    - material_name: Name of the material (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("disconnect_node", {
+            "node_name": node_name,
+            "socket_name": socket_name,
+            "socket_type": socket_type,
+            "material_name": material_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error disconnecting node: {str(e)}"
+
+@mcp.tool()
+def add_modifier(ctx: Context, modifier_type: str, name: str = None, object_name: str = None, settings: dict = None) -> str:
+    """
+    Add a modifier to an object.
+
+    Parameters:
+    - modifier_type: Type of modifier (SUBSURF, BEVEL, ARRAY, MIRROR, SOLIDIFY, BOOLEAN)
+    - name: Custom name for the modifier (optional)
+    - object_name: Name of the object (uses active if not specified)
+    - settings: Modifier settings dict (optional)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("add_modifier", {
+            "modifier_type": modifier_type,
+            "name": name,
+            "object_name": object_name,
+            "settings": settings or {}
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error adding modifier: {str(e)}"
+
+@mcp.tool()
+def remove_modifier(ctx: Context, modifier_name: str, object_name: str = None) -> str:
+    """
+    Remove a modifier from an object.
+
+    Parameters:
+    - modifier_name: Name of the modifier to remove
+    - object_name: Name of the object (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("remove_modifier", {
+            "modifier_name": modifier_name,
+            "object_name": object_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error removing modifier: {str(e)}"
+
+@mcp.tool()
+def apply_modifier(ctx: Context, modifier_name: str, object_name: str = None) -> str:
+    """
+    Apply a modifier to permanently bake its effect into the mesh.
+
+    Parameters:
+    - modifier_name: Name of the modifier to apply
+    - object_name: Name of the object (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("apply_modifier", {
+            "modifier_name": modifier_name,
+            "object_name": object_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error applying modifier: {str(e)}"
+
+@mcp.tool()
+def set_modifier_settings(ctx: Context, modifier_name: str, settings: dict, object_name: str = None) -> str:
+    """
+    Update settings on an existing modifier.
+
+    Parameters:
+    - modifier_name: Name of the modifier
+    - settings: Settings dict to update
+    - object_name: Name of the object (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("set_modifier_settings", {
+            "modifier_name": modifier_name,
+            "settings": settings,
+            "object_name": object_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error setting modifier settings: {str(e)}"
+
+@mcp.tool()
+def select_object(ctx: Context, object_name: str, extend: bool = False, active: bool = True) -> str:
+    """
+    Select an object in the scene.
+
+    Parameters:
+    - object_name: Name of the object to select
+    - extend: Whether to add to existing selection (default: False)
+    - active: Whether to make this the active object (default: True)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("select_object", {
+            "object_name": object_name,
+            "extend": extend,
+            "active": active
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error selecting object: {str(e)}"
+
+@mcp.tool()
+def set_mode(ctx: Context, mode: str, object_name: str = None) -> str:
+    """
+    Set the interaction mode.
+
+    Parameters:
+    - mode: Mode to switch to (OBJECT, EDIT, SCULPT, VERTEX_PAINT, WEIGHT_PAINT, TEXTURE_PAINT, POSE)
+    - object_name: Name of the object (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("set_mode", {
+            "mode": mode,
+            "object_name": object_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error setting mode: {str(e)}"
+
+@mcp.tool()
+def add_primitive(ctx: Context, primitive_type: str, location: list = None, size: float = None, name: str = None) -> str:
+    """
+    Add a primitive mesh object.
+
+    Parameters:
+    - primitive_type: Type of primitive (CUBE, SPHERE, CYLINDER, CONE, TORUS, PLANE, CIRCLE, MONKEY, EMPTY)
+    - location: Location [x, y, z] (optional)
+    - size: Size/scale of the primitive (optional)
+    - name: Custom name for the object (optional)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("add_primitive", {
+            "primitive_type": primitive_type,
+            "location": location,
+            "size": size,
+            "name": name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error adding primitive: {str(e)}"
+
+@mcp.tool()
+def transform_object(ctx: Context, object_name: str = None, location: list = None, rotation: list = None, scale: list = None) -> str:
+    """
+    Transform an object's location, rotation, or scale.
+
+    Parameters:
+    - object_name: Name of the object (uses active if not specified)
+    - location: New location [x, y, z] (optional)
+    - rotation: New rotation in degrees [x, y, z] (optional)
+    - scale: New scale [x, y, z] (optional)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("transform_object", {
+            "object_name": object_name,
+            "location": location,
+            "rotation": rotation,
+            "scale": scale
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error transforming object: {str(e)}"
+
+@mcp.tool()
+def delete_object(ctx: Context, object_name: str = None) -> str:
+    """
+    Delete an object from the scene.
+
+    Parameters:
+    - object_name: Name of the object to delete (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("delete_object", {"object_name": object_name})
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error deleting object: {str(e)}"
+
+@mcp.tool()
+def set_frame(ctx: Context, frame: int) -> str:
+    """
+    Set the current frame in the timeline.
+
+    Parameters:
+    - frame: Frame number to set
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("set_frame", {"frame": frame})
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error setting frame: {str(e)}"
+
+@mcp.tool()
+def set_frame_range(ctx: Context, start: int, end: int) -> str:
+    """
+    Set the animation frame range.
+
+    Parameters:
+    - start: Start frame
+    - end: End frame
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("set_frame_range", {"start": start, "end": end})
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error setting frame range: {str(e)}"
+
+@mcp.tool()
+def insert_keyframe(ctx: Context, data_path: str, frame: int = None, object_name: str = None) -> str:
+    """
+    Insert a keyframe for an object property.
+
+    Parameters:
+    - data_path: Property path to keyframe (e.g., 'location', 'rotation_euler', 'scale')
+    - frame: Frame number (uses current frame if not specified)
+    - object_name: Name of the object (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("insert_keyframe", {
+            "data_path": data_path,
+            "frame": frame,
+            "object_name": object_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error inserting keyframe: {str(e)}"
+
+@mcp.tool()
+def delete_keyframe(ctx: Context, data_path: str, frame: int = None, object_name: str = None) -> str:
+    """
+    Delete a keyframe from an object property.
+
+    Parameters:
+    - data_path: Property path of the keyframe
+    - frame: Frame number (uses current frame if not specified)
+    - object_name: Name of the object (uses active if not specified)
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("delete_keyframe", {
+            "data_path": data_path,
+            "frame": frame,
+            "object_name": object_name
+        })
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error deleting keyframe: {str(e)}"
+
+@mcp.tool()
+def execute_action_sequence(ctx: Context, actions: list) -> str:
+    """
+    Execute multiple actions in sequence atomically. Useful for multi-step operations.
+
+    Parameters:
+    - actions: List of action dicts with 'action' and 'params' keys
+      Example: [{"action": "add_primitive", "params": {"primitive_type": "CUBE"}}]
+    """
+    try:
+        blender = get_blender_connection()
+        response = blender.send_command("execute_action_sequence", {"actions": actions})
+        if response.get("status") == "error":
+            return f"Error: {response.get('message', 'Unknown error')}"
+        return json.dumps(response.get("result", response), indent=2)
+    except Exception as e:
+        return f"Error executing action sequence: {str(e)}"
+
+
 @mcp.prompt()
 def asset_creation_strategy() -> str:
     """Defines the preferred strategy for creating assets in Blender"""
