@@ -1,4 +1,13 @@
 {
+  "permissions": {
+    "allow": [
+      "mcp__terminal-mcp__createTerminal",
+      "mcp__terminal-mcp__listTerminals",
+      "mcp__terminal-mcp__sendCommand",
+      "mcp__terminal-mcp__getTerminalOutput",
+      "mcp__terminal-mcp__killTerminal"
+    ]
+  },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "context7",
