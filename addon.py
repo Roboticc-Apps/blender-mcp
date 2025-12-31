@@ -254,6 +254,10 @@ class BlenderMCPServer:
 
             # Action Sequencing - Multi-step atomic operations
             "execute_action_sequence": self.execute_action_sequence,
+
+            # v2 Workflow Guides - AI assistance for common workflows
+            "get_workflow_guide": self.get_workflow_guide,
+            "get_available_workflows": self.get_available_workflows,
         }
 
         # Add Polyhaven handlers only if enabled

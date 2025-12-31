@@ -20,3 +20,8 @@ package*.ps1
 
 # Local config secrets
 src/blender_mcp/config.py
+
+# Context/reference repos
+context/
+
+.env

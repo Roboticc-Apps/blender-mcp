@@ -1,7 +1,7 @@
 {
   "id": "blender-mcp",
   "name": "Blender MCP",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "AI-powered 3D modeling and scene control in Blender with voice commands, rich context, and multi-step operations",
   "author": "Blender MCP Contributors",
   "category": "creative",
