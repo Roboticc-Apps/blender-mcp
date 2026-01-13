@@ -5,7 +5,8 @@
       "mcp__terminal-mcp__listTerminals",
       "mcp__terminal-mcp__sendCommand",
       "mcp__terminal-mcp__getTerminalOutput",
-      "mcp__terminal-mcp__killTerminal"
+      "mcp__terminal-mcp__killTerminal",
+      "mcp__terminal-mcp__sendSignal"
     ]
   },
   "enableAllProjectMcpServers": true,

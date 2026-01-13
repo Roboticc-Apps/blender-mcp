@@ -60,16 +60,67 @@ Remove-Item "dist\manifest_temp.json"
 Write-Host "   Done - Copied addon.py and updated manifest.json" -ForegroundColor Green
 Write-Host ""
 
-# Step 5: Create ZIP package
-Write-Host "[5/6] Creating ZIP package..." -ForegroundColor Yellow
+# Step 5: Create ZIP package using Python (forward-slash paths for node-stream-zip compatibility)
+# CRITICAL: PowerShell's Compress-Archive creates backslash paths which node-stream-zip
+# rejects as "Malicious entry" due to path traversal security checks.
+# Python's zipfile creates forward-slash paths which are cross-platform compatible.
+Write-Host "[5/6] Creating ZIP package (Python zipfile for cross-platform paths)..." -ForegroundColor Yellow
 $zipName = "blender-mcp-v$Version-$Platform.zip"
-$filesToZip = @(
-    "dist\blender-mcp.exe",
-    "dist\blender_mcp_addon.py",
-    "dist\manifest.json"
-)
+$zipPath = "dist\$zipName"
 
-Compress-Archive -Path $filesToZip -DestinationPath "dist\$zipName" -Force
+# Remove old ZIP if exists
+Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+
+# Use Python zipfile to create ZIP with forward-slash paths
+$pythonScript = @"
+import zipfile
+import os
+
+zip_path = r'$zipPath'
+dist_dir = 'dist'
+
+# Files to include (relative to dist folder)
+files_to_zip = [
+    'blender-mcp.exe',
+    'blender_mcp_addon.py',
+    'manifest.json'
+]
+
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for filename in files_to_zip:
+        file_path = os.path.join(dist_dir, filename)
+        if os.path.exists(file_path):
+            # Use forward slashes for cross-platform compatibility
+            arcname = filename.replace('\\', '/')
+            zf.write(file_path, arcname)
+            print(f'  Added: {arcname}')
+        else:
+            print(f'  WARNING: File not found: {file_path}')
+
+print(f'ZIP created: {zip_path}')
+"@
+
+# Run Python script - try build_env first, then .venv
+if (Test-Path ".\build_env\Scripts\python.exe") {
+    $pythonScript | & ".\build_env\Scripts\python.exe" -
+} elseif (Test-Path ".\.venv\Scripts\python.exe") {
+    $pythonScript | & ".\.venv\Scripts\python.exe" -
+} else {
+    Write-Host "   ERROR - Python not found in build_env or .venv!" -ForegroundColor Red
+    exit 1
+}
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "   ERROR - ZIP creation failed!" -ForegroundColor Red
+    exit 1
+}
+
+# Verify ZIP was created
+if (-not (Test-Path $zipPath)) {
+    Write-Host "   ERROR - ZIP file not found!" -ForegroundColor Red
+    exit 1
+}
+
 Write-Host "   Done - Created dist\$zipName" -ForegroundColor Green
 
 # Get file size
