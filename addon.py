@@ -13,7 +13,8 @@ import traceback
 import os
 import shutil
 import zipfile
-from bpy.props import IntProperty
+from bpy.props import IntProperty, BoolProperty
+from bpy.app.handlers import persistent
 import io
 from datetime import datetime
 import hashlib, hmac, base64
@@ -23,10 +24,10 @@ from contextlib import redirect_stdout, suppress
 bl_info = {
     "name": "Blender MCP",
     "author": "BlenderMCP",
-    "version": (1, 2),
+    "version": (1, 3),
     "blender": (3, 0, 0),
     "location": "View3D > Sidebar > BlenderMCP",
-    "description": "Connect Blender to Claude via MCP",
+    "description": "Connect Blender to Claude via MCP (with auto-connect)",
     "category": "Interface",
 }
 
@@ -254,10 +255,6 @@ class BlenderMCPServer:
 
             # Action Sequencing - Multi-step atomic operations
             "execute_action_sequence": self.execute_action_sequence,
-
-            # v2 Workflow Guides - AI assistance for common workflows
-            "get_workflow_guide": self.get_workflow_guide,
-            "get_available_workflows": self.get_available_workflows,
         }
 
         # Add Polyhaven handlers only if enabled
@@ -3452,6 +3449,8 @@ class BLENDERMCP_PT_Panel(bpy.types.Panel):
         scene = context.scene
 
         layout.prop(scene, "blendermcp_port")
+        layout.prop(scene, "blendermcp_auto_start", text="Auto-connect on startup")
+        layout.separator()
         layout.prop(scene, "blendermcp_use_polyhaven", text="Use assets from Poly Haven")
 
         layout.prop(scene, "blendermcp_use_hyper3d", text="Use Hyper3D Rodin 3D model generation")
@@ -3532,6 +3531,31 @@ class BLENDERMCP_OT_StopServer(bpy.types.Operator):
         return {'FINISHED'}
 
 # Registration functions
+# Auto-start handler for automatic server connection on Blender startup
+@persistent
+def auto_start_server(dummy):
+    """Auto-start MCP server when Blender loads a file or starts fresh."""
+    def delayed_start():
+        try:
+            # Check if auto-start is enabled and server isn't already running
+            scene = bpy.context.scene
+            if hasattr(scene, 'blendermcp_auto_start') and scene.blendermcp_auto_start:
+                if not scene.blendermcp_server_running:
+                    # Create server instance if needed
+                    if not hasattr(bpy.types, "blendermcp_server") or not bpy.types.blendermcp_server:
+                        bpy.types.blendermcp_server = BlenderMCPServer(port=scene.blendermcp_port)
+                    # Start the server
+                    bpy.types.blendermcp_server.start()
+                    scene.blendermcp_server_running = True
+                    print("BlenderMCP: Auto-started server on port", scene.blendermcp_port)
+        except Exception as e:
+            print(f"BlenderMCP: Auto-start failed: {e}")
+        return None  # Don't repeat timer
+
+    # Delay start to ensure Blender context is fully ready
+    bpy.app.timers.register(delayed_start, first_interval=2.0)
+
+
 def register():
     bpy.types.Scene.blendermcp_port = IntProperty(
         name="Port",
@@ -3544,6 +3568,12 @@ def register():
     bpy.types.Scene.blendermcp_server_running = bpy.props.BoolProperty(
         name="Server Running",
         default=False
+    )
+
+    bpy.types.Scene.blendermcp_auto_start = bpy.props.BoolProperty(
+        name="Auto-Start",
+        description="Automatically start server when Blender opens",
+        default=True
     )
 
     bpy.types.Scene.blendermcp_use_polyhaven = bpy.props.BoolProperty(
@@ -3658,9 +3688,23 @@ def register():
     bpy.utils.register_class(BLENDERMCP_OT_StartServer)
     bpy.utils.register_class(BLENDERMCP_OT_StopServer)
 
+    # Register auto-start handler
+    if auto_start_server not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(auto_start_server)
+
+    # Also trigger auto-start now (for fresh Blender startup with addon enabled)
+    bpy.app.timers.register(
+        lambda: auto_start_server(None) or None,
+        first_interval=3.0
+    )
+
     print("BlenderMCP addon registered")
 
 def unregister():
+    # Remove auto-start handler
+    if auto_start_server in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(auto_start_server)
+
     # Stop the server if it's running
     if hasattr(bpy.types, "blendermcp_server") and bpy.types.blendermcp_server:
         bpy.types.blendermcp_server.stop()
@@ -3673,6 +3717,7 @@ def unregister():
 
     del bpy.types.Scene.blendermcp_port
     del bpy.types.Scene.blendermcp_server_running
+    del bpy.types.Scene.blendermcp_auto_start
     del bpy.types.Scene.blendermcp_use_polyhaven
     del bpy.types.Scene.blendermcp_use_hyper3d
     del bpy.types.Scene.blendermcp_hyper3d_mode
