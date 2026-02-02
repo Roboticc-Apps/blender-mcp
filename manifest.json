@@ -1,7 +1,7 @@
 {
   "id": "blender-mcp",
   "name": "Blender MCP",
-  "version": "1.7.0",
+  "version": "1.7.4",
   "description": "AI-powered 3D modeling and scene control in Blender - use execute_blender_code for all Blender operations",
   "author": "Blender MCP Contributors",
   "category": "creative",
@@ -20,8 +20,8 @@
   },
   "tools": [
     {
-      "name": "get_scene_info",
-      "description": "Get comprehensive Blender scene information including all objects, selection state, materials, cameras, lights, and modifiers",
+      "name": "get_current_state",
+      "description": "Get lightweight scene overview - object names, types, selection, cameras, lights. Use for AI context. Call get_object_info for details.",
       "category": "context"
     },
     {

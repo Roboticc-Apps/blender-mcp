@@ -249,26 +249,60 @@ def get_blender_connection():
     return _blender_connection
 
 
-@telemetry_tool("get_scene_info")
+@telemetry_tool("get_current_state")
 @mcp.tool()
-def get_scene_info(ctx: Context) -> str:
-    """Get detailed information about the current Blender scene"""
+def get_current_state(ctx: Context) -> str:
+    """
+    Get lightweight scene overview for AI context.
+    Returns skeleton: object names, types, selection, cameras, lights.
+    Use get_object_info(object_name) when you need details about a specific object.
+    """
     try:
         blender = get_blender_connection()
         response = blender.send_command("get_scene_info")
 
-        # Check for errors
         if response.get("status") == "error":
             error_msg = response.get("message", "Unknown error")
             logger.error(f"Blender error: {error_msg}")
-            return f"Error getting scene info: {error_msg}"
+            return f"Error getting scene state: {error_msg}"
 
-        # Return the result
         result = response.get("result", {})
-        return json.dumps(result, indent=2)
+
+        # Extract skeleton - just names and basic info, not full details
+        skeleton = {
+            "scene_name": result.get("scene_name", "Unknown"),
+            "object_count": len(result.get("objects", [])),
+            "objects": [],  # Just names and types
+            "selected_objects": result.get("selected_objects", []),
+            "active_object": result.get("active_object"),
+            "mode": result.get("mode"),
+            "frame_current": result.get("frame_current"),
+            "cameras": [],
+            "lights": []
+        }
+
+        # Extract just object names and types (not full mesh/material data)
+        for obj in result.get("objects", []):
+            if isinstance(obj, dict):
+                skeleton["objects"].append({
+                    "name": obj.get("name"),
+                    "type": obj.get("type")
+                })
+            elif isinstance(obj, str):
+                skeleton["objects"].append({"name": obj, "type": "UNKNOWN"})
+
+        # Categorize cameras and lights for quick reference
+        for obj in skeleton["objects"]:
+            if obj.get("type") == "CAMERA":
+                skeleton["cameras"].append(obj["name"])
+            elif obj.get("type") == "LIGHT":
+                skeleton["lights"].append(obj["name"])
+
+        return json.dumps(skeleton, indent=2)
     except Exception as e:
-        logger.error(f"Error getting scene info from Blender: {str(e)}")
-        return f"Error getting scene info: {str(e)}"
+        logger.error(f"Error getting scene state from Blender: {str(e)}")
+        return f"Error getting scene state: {str(e)}"
+
 
 @telemetry_tool("get_object_info")
 @mcp.tool()
@@ -1033,7 +1067,7 @@ def asset_creation_strategy() -> str:
     """Defines the preferred strategy for creating assets in Blender"""
     return """When creating 3D content in Blender, always start by checking if integrations are available:
 
-    0. Before anything, always check the scene from get_scene_info()
+    0. Before anything, always check the scene from get_current_state()
     1. First use the following tools to verify if the following integrations are enabled:
         1. PolyHaven
             Use get_polyhaven_status() to verify its status
